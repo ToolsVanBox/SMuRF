@@ -20,7 +20,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 # Get version from git
 #__version__ = subprocess.check_output(["git", "describe"]).strip().decode('UTF-8')
-__version__ = 'v1.1.0'
+__version__ = 'v1.1.1'
 
 # Set arguments
 parser = argparse.ArgumentParser()
@@ -45,7 +45,7 @@ parser.add_argument('-m', '--mapq', default=0, type=int, help="Include only read
 parser.add_argument('-p', '--base_phred_quality', default=0, type=int, help="Include only bases with a minimal base phred quality (default: %(default)s)")
 parser.add_argument('-minc','--min_components', default=2,type=int,help="Minimal number of components (default: %(default)s)")
 parser.add_argument('-maxc','--max_components',default=3,type=int,help="Maximal number of components (default: %(default)s)")
-parser.add_argument('-indel', '--indel', default=False, action='store_true', help="Include indels as well (default: %(default)s)")
+parser.add_argument('-indel', '--indel', default=True, action='store_false', help="Exclude indels")
 parser.add_argument('-v', '--version', action='version', version=__version__)
 args = parser.parse_args()
 
