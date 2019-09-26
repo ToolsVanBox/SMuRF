@@ -1,4 +1,18 @@
 # TOOL
 Tool without a name
 
-Variant Filtering Tool
+# Name ideas
+- Mutations
+- Variants
+- SNV
+- Indel
+
+- Annotation
+- Flag
+- Filter
+- Genotyping
+- VAF
+
+- Checker
+- Tool
+- Pipeline
