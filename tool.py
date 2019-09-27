@@ -723,7 +723,8 @@ def add_responsibilities():
         # Add VAF information to the format field of each sample
         record.FORMAT = ":".join(format_list)
         vcf_writer.write_record(record)
-    os.system("rm -rf tool_tmp/")
+    os.system("rm -rf tool_tmp/*")
+    os.system("rm -rf tool_tmp")
 
 if __name__ == "__main__":
     #get_command_line()
