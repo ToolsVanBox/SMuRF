@@ -17,6 +17,8 @@ Tool without a name
 - Tool
 - Pipeline
 
+- SMuRF
+
 # How to run
 
 ## Input
