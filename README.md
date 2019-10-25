@@ -53,5 +53,6 @@ If you created a new virtual environment, install the required modules
 ## Run tool
 Run the tool
 ```
-> python /hpc/pmc_vanboxtel/tools/TOOL/tool.py -i /path/to/<file.vcf.gz> -b /path/to/*.bam -c <NAME_OF_CONTROL> -bl /hpc/pmc_vanboxtel/data/Mutation_blacklists/MSC_healthyBM_raw_variants.vcf
+> python /hpc/pmc_vanboxtel/tools/TOOL/tool.py -i /path/to/<file.vcf.gz> -b /path/to/*.bam -c <NAME_OF_CONTROL> -bl /hpc/pmc_vanboxtel/data/Mutation_blacklists/MSC_healthyBM_raw_variants_hg38.bed
+
 ```
