@@ -23,7 +23,7 @@ If you need to create a new virtual environment
 ### Load venv
 Before you run the tool, you need load the virtual environment
 ```
-> . /hpc/pmc_vanboxtel/tools/TOOL/venv_3.6/bin/activate
+> . /hpc/pmc_vanboxtel/tools/SMuRF/venv_3.6/bin/activate
 ```
 
 ### Install python modules
@@ -32,9 +32,9 @@ If you created a new virtual environment, install the required modules
 > pip install -r requirements.txt
 ```
 
-## Run tool
-Run the tool
+## Run SMuRF
+Run SMuRF
 ```
-> python /hpc/pmc_vanboxtel/tools/TOOL/tool.py -i /path/to/<file.vcf.gz> -b /path/to/*.bam -c <NAME_OF_CONTROL> -bl /hpc/pmc_vanboxtel/data/Mutation_blacklists/MSC_healthyBM_raw_variants_hg38.bed
+> python /hpc/pmc_vanboxtel/tools/SMuRF/SMuRF.py -i /path/to/<file.vcf.gz> -b /path/to/*.bam -c <NAME_OF_CONTROL> -bl /hpc/pmc_vanboxtel/data/Mutation_blacklists/MSC_healthyBM_raw_variants_hg38.bed
 
 ```
