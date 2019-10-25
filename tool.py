@@ -18,10 +18,11 @@ import numpy as np
 import re
 from sklearn.mixture import GaussianMixture
 from matplotlib.backends.backend_pdf import PdfPages
+import warnings
 
 # Get version from git
 #__version__ = subprocess.check_output(["git", "describe"]).strip().decode('UTF-8')
-__version__ = 'v1.1.2'
+__version__ = 'v1.1.3'
 
 # Set arguments
 parser = argparse.ArgumentParser()
@@ -30,7 +31,7 @@ parser.add_argument('-i', '--input', type=str, help='Input indexed vcf.gz file',
 parser.add_argument('-b', '--bam', action='append', nargs="*", type=str, help='Input bam file', required=True)
 parser.add_argument('-t', '--threads', default=8, type=int, help="Number of threads (default: %(default)s)")
 parser.add_argument('-c', '--control', action='append', type=str, help='Control sample name')
-parser.add_argument('-bl', '--blacklist', action='append', type=str, help='Black list vcf')
+parser.add_argument('-bl', '--blacklist', action='append', type=str, help='Black list vcf or bed file. Multiple files can be used.')
 parser.add_argument('-q', '--qual', default=100, type=int, help="Flag variants with a low QUAL value (default: %(default)s)")
 parser.add_argument('-mq', '--mq', default=60, type=int, help="Flag variants with a low MQ value (default: %(default)s)")
 parser.add_argument('-sgq11','--sample_gq_homozygous', default=10, type=int, help="Minimal Genome Quality of a homozygous SNV in a sample (default: %(default)s)")
@@ -696,6 +697,14 @@ def create_blacklist():
                                            names=["chr", "loc"],
                                            usecols=["chr", "loc"],
                                            dtype={0: "str", 1: "int"})
+        if bl_vcf.endswith(".bed"):
+            blacklist_single["loc"] =+ 1 #Bed files are 0-based and are converted to 1-based.
+        elif not bl_vcf.endswith(".vcf|.vcf.gz"):
+            warnings.warn("""The blacklist: {0} is not a .vcf or .bed file. Continuing with the following assumptions:\n
+                          Column 1: Chromosome\n
+                          Column 2: 1-based position\n
+                          Header/Comments: #""".format(bl_vcf))
+
         blacklists.append(blacklist_single)
 
     blacklist = pd.concat(blacklists)
