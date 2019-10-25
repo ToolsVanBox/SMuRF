@@ -21,7 +21,7 @@ If you need to create a new virtual environment
 ```
 
 ### Load venv
-Before you run the tool, you need load the virtual environment
+Before you run SMuRF, you need load the virtual environment
 ```
 > . /hpc/pmc_vanboxtel/tools/SMuRF/venv_3.6/bin/activate
 ```
