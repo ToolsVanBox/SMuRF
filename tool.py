@@ -15,12 +15,14 @@ import glob
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import re
 from sklearn.mixture import GaussianMixture
 from matplotlib.backends.backend_pdf import PdfPages
+import warnings
 
 # Get version from git
 #__version__ = subprocess.check_output(["git", "describe"]).strip().decode('UTF-8')
-__version__ = 'v1.1.1'
+__version__ = 'v1.1.3'
 
 # Set arguments
 parser = argparse.ArgumentParser()
@@ -29,7 +31,7 @@ parser.add_argument('-i', '--input', type=str, help='Input indexed vcf.gz file',
 parser.add_argument('-b', '--bam', action='append', nargs="*", type=str, help='Input bam file', required=True)
 parser.add_argument('-t', '--threads', default=8, type=int, help="Number of threads (default: %(default)s)")
 parser.add_argument('-c', '--control', action='append', type=str, help='Control sample name')
-parser.add_argument('-bl', '--blacklist', action='append', type=str, help='Black list vcf')
+parser.add_argument('-bl', '--blacklist', action='append', type=str, help='Black list vcf or bed file. Multiple files can be used.')
 parser.add_argument('-q', '--qual', default=100, type=int, help="Flag variants with a low QUAL value (default: %(default)s)")
 parser.add_argument('-mq', '--mq', default=60, type=int, help="Flag variants with a low MQ value (default: %(default)s)")
 parser.add_argument('-sgq11','--sample_gq_homozygous', default=10, type=int, help="Minimal Genome Quality of a homozygous SNV in a sample (default: %(default)s)")
@@ -66,7 +68,6 @@ except:
 
 # Define global variables
 vaf_dict = collections.defaultdict(list)
-blacklist = collections.defaultdict(dict)
 responsibilities_dict = collections.defaultdict(dict)
 contig_list = []
 bam_sample_names = collections.defaultdict(dict)
@@ -133,6 +134,10 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
                 continue
             for record in contig_vcf_reader.fetch(contig):
                 if not record.FILTER:
+                    chr = record.CHROM
+                    chr = chr.lower()
+                    chr = re.sub("chr|chrom", "", chr)
+
                     if record.ID and "COSM" not in record.ID:
                         record.FILTER.append('KnownVariant')
                     elif record.QUAL < args.qual:
@@ -141,7 +146,7 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
                         record.FILTER.append('MultiAllelic')
                     elif record.INFO['MQ'] < args.mq:
                         record.FILTER.append('BadMQ')
-                    elif record.CHROM in blacklist and record.POS in blacklist[record.CHROM]:
+                    elif chr in blacklist and record.POS in blacklist[chr]:
                         record.FILTER.append("BlackList")
                     elif (len(record.ALT[0]) > 1 or len(record.REF) > 1) and not args.indel:
                         record.FILTER.append("Indel")
@@ -177,7 +182,7 @@ def fix_vcf_header( vcf_reader ):
     """
     #dbNSFP_clinvar_clnsig has a Integer type but sometimes it is a String, e.g. 2|2
     vcf_reader.infos['dbNSFP_clinvar_clnsig'] = pyvcf.parser._Info("dbNSFP_clinvar_clnsig",1,"String","Field 'clinvar_clnsig' from dbNSFP", None, None)
-    #dbNSFP_clinvar_golden_stars has a Integer type but sometimes it is a String, e.g. 0|1    
+    #dbNSFP_clinvar_golden_stars has a Integer type but sometimes it is a String, e.g. 0|1
     vcf_reader.infos['dbNSFP_clinvar_golden_stars'] = pyvcf.parser._Info("dbNSFP_clinvar_golden_stars",1,"String","Field 'clinvar_golden_stars' from dbNSFP", None, None)
     vcf_reader.infos['dbNSFP_hg18_chr'] = pyvcf.parser._Info("dbNSFP_hg18_chr",1,"String","Field 'hg18_chr' from dbNSFP", None, None)
     vcf_reader.infos['dbNSFP_hg19_chr'] = pyvcf.parser._Info("dbNSFP_hg19_chr",1,"String","Field 'hg19_chr' from dbNSFP", None, None)
@@ -683,13 +688,28 @@ def create_blacklist():
     """
     # global blacklist
     # Loop through every blacklist file given on the command line
+    blacklists = []
     for bl_vcf in args.blacklist:
-        with(open(bl_vcf,'r')) as b:
-            for line in b:
-                if not line.startswith("#"):
-                    columns = line.split("\t")
-                    # Add chromosome and position to the dictionary
-                    blacklist[columns[0]][int(columns[1])] = 1
+        blacklist_single = pandas.read_csv(bl_vcf,
+                                           sep="\t",
+                                           comment="#",
+                                           header=None,
+                                           names=["chr", "loc"],
+                                           usecols=["chr", "loc"],
+                                           dtype={0: "str", 1: "int"})
+        if bl_vcf.endswith(".bed"):
+            blacklist_single["loc"] =+ 1 #Bed files are 0-based and are converted to 1-based.
+        elif not bl_vcf.endswith(".vcf|.vcf.gz"):
+            warnings.warn("""The blacklist: {0} is not a .vcf or .bed file. Continuing with the following assumptions:\n
+                          Column 1: Chromosome\n
+                          Column 2: 1-based position\n
+                          Header/Comments: #""".format(bl_vcf))
+
+        blacklists.append(blacklist_single)
+
+    blacklist = pd.concat(blacklists)
+    blacklist["chr"] = blacklist["chr"].str.lower().str.replace("chr|chrom", "")
+    blacklist = {k: g["loc"].tolist() for k, g in blacklist.groupby("chr")}
 
 def merge_tmp_vcfs():
     """
