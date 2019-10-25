@@ -22,7 +22,7 @@ import warnings
 
 # Get version from git
 #__version__ = subprocess.check_output(["git", "describe"]).strip().decode('UTF-8')
-__version__ = 'v1.1.3'
+__version__ = 'v2.0.0'
 
 # Set arguments
 parser = argparse.ArgumentParser()
@@ -40,6 +40,7 @@ parser.add_argument('-cgq11','--control_gq_homozygous', default=10, type=int, he
 parser.add_argument('-cgq01','--control_gq_heterozygous', default=10, type=int, help="Minimal Genome Quality of a heterozygous SNV in a control (default: %(default)s)")
 parser.add_argument('-igq11','--indel_gq_homozygous', default=99, type=int, help="Minimal Genome Quality of a homozygous indel (default: %(default)s)")
 parser.add_argument('-igq01','--indel_gq_heterozygous', default=99, type=int, help="Minimal Genome Quality of a heterozygous indel (default: %(default)s)")
+parser.add_argument('-igq00','--indel_gq_homref', default=20, type=int, help="Minimal Genome Quality of a homozygous reference indel (default: %(default)s)")
 parser.add_argument('-cov', '--coverage', default=10, type=int, help="Flag variants with a low COV value (default: %(default)s)")
 parser.add_argument('-ct', '--clonal_threshold', default=0.3, type=float, help="Sample reported as subclonal if VAF is lower (default: %(default)s)")
 parser.add_argument('-at', '--absent_threshold', default=0.0, type=float, help="Sample reported as absent if VAF is lower(default: %(default)s)")
@@ -59,12 +60,14 @@ if not args.control:
 
 # Read the vcf, fix and add fields to the header
 vcf_reader = pyvcf.Reader(filename=args.input)
+vcf_name = os.path.basename(args.input)
+vcf_name = vcf_name.replace(".vcf.gz","")
 
 # Create tmp directory if it does not exists
 try:
-    os.stat('./tool_tmp')
+    os.stat('./SMuRF_tmp')
 except:
-    os.mkdir('./tool_tmp')
+    os.mkdir('./SMuRF_tmp')
 
 # Define global variables
 vaf_dict = collections.defaultdict(list)
@@ -73,11 +76,11 @@ contig_list = []
 bam_sample_names = collections.defaultdict(dict)
 
 def main():
-    global vcf_reader, vaf_df
+    global vcf_reader, vaf_df, blacklist
     vcf_reader = fix_vcf_header(vcf_reader)
     vcf_reader = add_vcf_header(vcf_reader)
 
-    create_blacklist()
+    blacklist = create_blacklist()
 
     for contig in vcf_reader.contigs:
         contig_list.append(contig)
@@ -125,13 +128,14 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
         try:
             # Get contig one by one from the queue
             contig = q.get(block=False,timeout=1)
-            contig_vcf_flag_writer = pyvcf.Writer(open('./tool_tmp/{}_flag.vcf'.format(contig),'w'), contig_vcf_reader)
+            contig_vcf_flag_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_SMuRF.vcf'.format(contig),'w'), contig_vcf_reader)
             try:
                 # Try to parse the specific contig from the vcf
                 contig_vcf_reader.fetch(contig)
             except:
                 # Skip contig if it is not present in the vcf file
                 continue
+            # print( "blacklist", blacklist )
             for record in contig_vcf_reader.fetch(contig):
                 if not record.FILTER:
                     chr = record.CHROM
@@ -195,7 +199,7 @@ def add_vcf_header( vcf_reader ):
     Return: The vcf reader object with new headers added
     """
     # Metadata
-    vcf_reader.metadata['ToolCmd'] = [get_command_line()]
+    vcf_reader.metadata['SMuRFCmd'] = [get_command_line()]
 
     # Formats
     vcf_reader.formats['VAF'] = pyvcf.parser._Format('VAF',None,'Float','Variant Allele Frequency calculated from the BAM file')
@@ -376,7 +380,7 @@ def create_vaf_plot():
     Function to plot the VAF values
     """
     # Open a multipage pdf file
-    with PdfPages('VAFplot.pdf') as pdf:
+    with PdfPages(vcf_name+'_SMuRF_VAFplot.pdf') as pdf:
         for sample in vaf_dict:
             plt.figure(figsize=(30,10))
 
@@ -459,7 +463,7 @@ def sample_quality_control( record ):
             # If sample is homozygous reference
             if call['GT'] == '0/0':
                 noSampleEvidence += 1
-                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_homozygous):
+                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_homref):
                     qc[sample][call.sample] = 'LowGQ'
                 elif not indel and (not call['GQ'] or call['GQ'] < args.sample_gq_homozygous):
                     qc[sample][call.sample] = 'LowGQ'
@@ -499,7 +503,7 @@ def sample_quality_control( record ):
                 else:
                     qc[sample][call.sample] = 'isVariant'
             elif call['GT'] == '0/0':
-                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_homozygous):
+                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_homref):
                     qc[sample][call.sample] = 'LowGQ'
                 elif not indel and (not call['GQ'] or call['GQ'] < args.control_gq_homozygous):
                     qc[sample][call.sample] = 'LowGQ'
@@ -690,7 +694,7 @@ def create_blacklist():
     # Loop through every blacklist file given on the command line
     blacklists = []
     for bl_vcf in args.blacklist:
-        blacklist_single = pandas.read_csv(bl_vcf,
+        blacklist_single = pd.read_csv(bl_vcf,
                                            sep="\t",
                                            comment="#",
                                            header=None,
@@ -698,7 +702,7 @@ def create_blacklist():
                                            usecols=["chr", "loc"],
                                            dtype={0: "str", 1: "int"})
         if bl_vcf.endswith(".bed"):
-            blacklist_single["loc"] =+ 1 #Bed files are 0-based and are converted to 1-based.
+            blacklist_single["loc"] += 1 #Bed files are 0-based and are converted to 1-based.
         elif not bl_vcf.endswith(".vcf|.vcf.gz"):
             warnings.warn("""The blacklist: {0} is not a .vcf or .bed file. Continuing with the following assumptions:\n
                           Column 1: Chromosome\n
@@ -711,6 +715,8 @@ def create_blacklist():
     blacklist["chr"] = blacklist["chr"].str.lower().str.replace("chr|chrom", "")
     blacklist = {k: g["loc"].tolist() for k, g in blacklist.groupby("chr")}
 
+    return( blacklist )
+
 def merge_tmp_vcfs():
     """
     Function to merge all the tmp contig vcf files
@@ -720,17 +726,17 @@ def merge_tmp_vcfs():
     # Loop through all chromomsomes
     for contig in contig_list:
         if not header:
-            os.system('cat tool_tmp/{}_flag.vcf > flag.vcf'.format(contig))
+            os.system('cat SMuRF_tmp/{}_SMuRF.vcf > {}_SMuRF.vcf'.format(contig, vcf_name))
             header = True
         else:
-            os.system('grep -v \'^#\' tool_tmp/{}_flag.vcf >> flag.vcf'.format(contig))
-    os.system("grep -P '^#|\s+PASS\s+' flag.vcf > tool_tmp/filter.vcf")
+            os.system('grep -v \'^#\' SMuRF_tmp/{}_SMuRF.vcf >> {}_SMuRF.vcf'.format(contig, vcf_name))
+    os.system("grep -P '^#|\s+PASS\s+' "+vcf_name+"_SMuRF.vcf > SMuRF_tmp/filter.vcf")
 
 def add_responsibilities():
-    vcf_reader = pyvcf.Reader(filename="tool_tmp/filter.vcf")
+    vcf_reader = pyvcf.Reader(filename="SMuRF_tmp/filter.vcf")
     vcf_reader.formats['PC'] = pyvcf.parser._Format('PC',None,'Float','Probability of each component')
 
-    vcf_writer =  pyvcf.Writer(open('filter.vcf','w'), vcf_reader)
+    vcf_writer =  pyvcf.Writer(open(vcf_name+'_SMuRF_filtered.vcf','w'), vcf_reader)
 
     for record in vcf_reader:
         for call in (record.samples):
@@ -747,8 +753,8 @@ def add_responsibilities():
         # Add VAF information to the format field of each sample
         record.FORMAT = ":".join(format_list)
         vcf_writer.write_record(record)
-    os.system("rm -rf tool_tmp/*")
-    os.system("rm -rf tool_tmp")
+    os.system("rm -rf SMuRF_tmp/*")
+    os.system("rm -rf SMuRF_tmp")
 
 if __name__ == "__main__":
     #get_command_line()
