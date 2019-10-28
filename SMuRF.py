@@ -123,11 +123,11 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
     Input: VCF reader object
     Input: List with the bam names
     """
-    contig_vaf = collections.defaultdict(list)
     while True:
         try:
             # Get contig one by one from the queue
             contig = q.get(block=False,timeout=1)
+            contig_vaf = collections.defaultdict(list)
             contig_vcf_flag_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_SMuRF.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
             try:
                 # Try to parse the specific contig from the vcf
@@ -156,7 +156,8 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
                         record.FILTER.append("Indel")
                     elif sample_quality_control( record ):
                         for s,v in calculate_vaf( record ).items():
-                            contig_vaf[s].append(v)
+                            if ( not record.FILTER or record.FILTER == ['NoClonalSample'] ):
+                                contig_vaf[s].append(v)
                 contig_vcf_flag_writer.write_record(record)
             q_out.put( contig_vaf )
 
