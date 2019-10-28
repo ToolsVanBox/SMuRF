@@ -38,3 +38,15 @@ Run SMuRF
 > python /hpc/pmc_vanboxtel/tools/SMuRF/SMuRF.py -i /path/to/<file.vcf.gz> -b /path/to/*.bam -c <NAME_OF_CONTROL> -bl /hpc/pmc_vanboxtel/data/Mutation_blacklists/MSC_healthyBM_raw_variants_hg38.bed
 
 ```
+
+## Known issues
+
+### UnicodedDecodeError
+Check the encoding of your file
+```
+file -bi [FILE]
+```
+Convert your vcf file to requested character encoding
+```
+> inconv -f iso-8859-1 -t utf8 [FILE] > [OUTPUT]
+```
