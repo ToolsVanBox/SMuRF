@@ -59,7 +59,7 @@ if not args.control:
     args.control = [ None ]
 
 # Read the vcf, fix and add fields to the header
-vcf_reader = pyvcf.Reader(filename=args.input)
+vcf_reader = pyvcf.Reader(filename=args.input, encoding='utf-8')
 vcf_name = os.path.basename(args.input)
 vcf_name = vcf_name.replace(".vcf.gz","")
 
@@ -128,7 +128,7 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
         try:
             # Get contig one by one from the queue
             contig = q.get(block=False,timeout=1)
-            contig_vcf_flag_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_SMuRF.vcf'.format(contig),'w'), contig_vcf_reader)
+            contig_vcf_flag_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_SMuRF.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
             try:
                 # Try to parse the specific contig from the vcf
                 contig_vcf_reader.fetch(contig)
@@ -733,10 +733,10 @@ def merge_tmp_vcfs():
     os.system("grep -P '^#|\s+PASS\s+' "+vcf_name+"_SMuRF.vcf > SMuRF_tmp/filter.vcf")
 
 def add_responsibilities():
-    vcf_reader = pyvcf.Reader(filename="SMuRF_tmp/filter.vcf")
+    vcf_reader = pyvcf.Reader(filename="SMuRF_tmp/filter.vcf", encoding='utf-8')
     vcf_reader.formats['PC'] = pyvcf.parser._Format('PC',None,'Float','Probability of each component')
 
-    vcf_writer =  pyvcf.Writer(open(vcf_name+'_SMuRF_filtered.vcf','w'), vcf_reader)
+    vcf_writer =  pyvcf.Writer(open(vcf_name+'_SMuRF_filtered.vcf','w', encoding='utf-8'), vcf_reader)
 
     for record in vcf_reader:
         for call in (record.samples):
