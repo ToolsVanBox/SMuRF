@@ -704,7 +704,7 @@ def create_blacklist():
                                            dtype={0: "str", 1: "int"})
         if bl_vcf.endswith(".bed"):
             blacklist_single["loc"] += 1 #Bed files are 0-based and are converted to 1-based.
-        elif not bl_vcf.endswith(".vcf|.vcf.gz"):
+        elif not bl_vcf.endswith(".vcf"):
             warnings.warn("""The blacklist: {0} is not a .vcf or .bed file. Continuing with the following assumptions:\n
                           Column 1: Chromosome\n
                           Column 2: 1-based position\n
