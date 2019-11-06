@@ -48,5 +48,5 @@ file -bi [FILE]
 ```
 Convert your vcf file to requested character encoding
 ```
-> inconv -f iso-8859-1 -t utf8 [FILE] > [OUTPUT]
+> iconv -f iso-8859-1 -t utf8 [FILE] > [OUTPUT]
 ```
