@@ -1,4 +1,5 @@
-# SMuRF
+![Alt text](https://github.com/ToolsVanBox/SMuRF/blob/master/SMuRF.png)
+
 Somatic Mutations Rechecker and Filtering
 
 # How to run
