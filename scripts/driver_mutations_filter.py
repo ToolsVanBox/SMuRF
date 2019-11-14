@@ -122,7 +122,7 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader):
                 continue
             for record in contig_vcf_reader.fetch(contig):
                 write = True
-                for fil in ['BadQual','BadMQ']:
+                for fil in ['BadQual','BadMQ','NoClonalSample']:
                     if fil in record.FILTER:
                         record.FILTER.remove(fil)
                 for fil in ['ControlEvidence','ControlClonal','ControlSubclonal']:
@@ -336,7 +336,7 @@ def check_gl_som( record ):
     somatic = None
 
     if ( record.INFO['ABSENT_CONTROLS'] > 0 and record.INFO['CLONAL_CONTROLS'] == 0 and record.INFO['SUBCLONAL_CONTROLS'] == 0 ):
-        if ( record.INFO['CLONAL_SAMPLES'] > 0 ):
+        if ( record.INFO['CLONAL_SAMPLES'] > 0 or record.INFO['SUBCLONAL_SAMPLES'] > 0 ):
             somatic = True
     if ( record.INFO['ABSENT_CONTROLS'] == 0 and ( record.INFO['CLONAL_CONTROLS'] > 0 or record.INFO['SUBCLONAL_CONTROLS'] > 0 ) ):
         if ( record.INFO['ABSENT_SAMPLES'] == 0 and ( record.INFO['CLONAL_SAMPLES'] > 0 or record.INFO['SUBCLONAL_SAMPLES'] > 0 ) ) :
