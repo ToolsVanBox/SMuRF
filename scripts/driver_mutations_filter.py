@@ -336,10 +336,13 @@ def check_gl_som( record ):
     somatic = None
 
     if ( record.INFO['ABSENT_CONTROLS'] > 0 and record.INFO['CLONAL_CONTROLS'] == 0 and record.INFO['SUBCLONAL_CONTROLS'] == 0 ):
-        if ( record.INFO['CLONAL_SAMPLES'] > 0 or record.INFO['SUBCLONAL_SAMPLES'] > 0 ):
+        if ( record.INFO['CLONAL_SAMPLES'] > 0 ):
+        # if ( record.INFO['CLONAL_SAMPLES'] > 0 or record.INFO['SUBCLONAL_SAMPLES'] > 0 ):
             somatic = True
-    if ( record.INFO['ABSENT_CONTROLS'] == 0 and ( record.INFO['CLONAL_CONTROLS'] > 0 or record.INFO['SUBCLONAL_CONTROLS'] > 0 ) ):
-        if ( record.INFO['ABSENT_SAMPLES'] == 0 and ( record.INFO['CLONAL_SAMPLES'] > 0 or record.INFO['SUBCLONAL_SAMPLES'] > 0 ) ) :
+    if ( record.INFO['ABSENT_CONTROLS'] == 0 and record.INFO['CLONAL_CONTROLS'] > 0 ):
+    # if ( record.INFO['ABSENT_CONTROLS'] == 0 and ( record.INFO['CLONAL_CONTROLS'] > 0 or record.INFO['SUBCLONAL_CONTROLS'] > 0 ) ):
+        if ( record.INFO['ABSENT_SAMPLES'] == 0 and record.INFO['CLONAL_SAMPLES'] > 0 ) :
+        # if ( record.INFO['ABSENT_SAMPLES'] == 0 and ( record.INFO['CLONAL_SAMPLES'] > 0 or record.INFO['SUBCLONAL_SAMPLES'] > 0 ) ) :
             germline = True
 
     return( germline, somatic)
