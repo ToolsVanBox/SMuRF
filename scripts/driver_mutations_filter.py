@@ -44,6 +44,7 @@ vcf_name = vcf_name.replace(".vcf.gz","")
 contig_list = []
 genes_list = []
 bam_sample_names = collections.defaultdict(dict)
+genes_table = {}
 
 
 args.control = []
@@ -86,7 +87,9 @@ def main():
         time.sleep(5)
         try:
             while 1:
-                q_out.get(block=False, timeout=1)
+                contig_genes_table = q_out.get(block=False, timeout=1)
+                if contig_genes_table:
+                    genes_table.update( contig_genes_table )
         except queue.Empty:
             pass
     # Give tasks a chance to put more data in
@@ -97,6 +100,15 @@ def main():
 
     for p in processes:
         p.join()
+
+    genes_table_file = open("genes_table.txt",'w')
+    genes_table_file.write( "\t".join(['gene','germline','somatic','other', 'FP']) + "\n" )
+    for gene_name in genes_table:
+        outline = [gene_name]
+        for mut_type in ['GL','SOM','OTHER', 'FP']:
+            outline.append(str(genes_table[gene_name][mut_type]))
+        genes_table_file.write( "\t".join(outline) + "\n")
+    genes_table_file.close()
 
 def parse_chr_vcf(q, q_out, contig_vcf_reader):
     """
@@ -111,9 +123,11 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader):
         try:
             # Get contig one by one from the queue
             contig = q.get(block=False,timeout=1)
-            contig_vcf_drivers_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_drivers.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
+            contig_vcf_other_drivers_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_drivers_others.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
+            contig_vcf_FP_drivers_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_drivers_FP.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
             contig_vcf_GL_drivers_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_drivers_GL.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
             contig_vcf_SOM_drivers_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_drivers_SOM.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
+            contig_genes_table = {}
             try:
                 # Try to parse the specific contig from the vcf
                 contig_vcf_reader.fetch(contig)
@@ -150,16 +164,41 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader):
                                 write = False
                                 continue
                             if gl and not som:
+                                gene_name = get_gene_name( record )
+                                if gene_name not in contig_genes_table:
+                                    contig_genes_table[gene_name] = {"GL":0, "SOM":0, "OTHER":0, "FP":0 }
+                                contig_genes_table[gene_name]['GL'] += 1
                                 contig_vcf_GL_drivers_writer.write_record(record)
                             elif not gl and som:
+                                gene_name = get_gene_name( record )
+                                if gene_name not in contig_genes_table:
+                                    contig_genes_table[gene_name] = {"GL":0, "SOM":0, "OTHER":0, "FP":0 }
+                                contig_genes_table[gene_name]['SOM'] += 1
                                 contig_vcf_SOM_drivers_writer.write_record(record)
+                            elif not gl and not som:
+                                gene_name = get_gene_name( record )
+                                if gene_name not in contig_genes_table:
+                                    contig_genes_table[gene_name] = {"GL":0, "SOM":0, "OTHER":0, "FP":0 }
+                                contig_genes_table[gene_name]['FP'] += 1
+                                contig_vcf_FP_drivers_writer.write_record(record)
                             else:
-                                contig_vcf_drivers_writer.write_record(record)
-            q_out.put( contig )
+                                gene_name = get_gene_name( record )
+                                if gene_name not in contig_genes_table:
+                                    contig_genes_table[gene_name] = {"GL":0, "SOM":0, "OTHER":0, "FP":0 }
+                                contig_genes_table[gene_name]['OTHER'] += 1
+                                contig_vcf_other_drivers_writer.write_record(record)
+            q_out.put( contig_genes_table )
 
         # Break the loop if the queue is empty
         except queue.Empty:
             break
+
+def get_gene_name( record ):
+    if 'ANN' in record.INFO:
+        annlist = record.INFO['ANN'][0].split("|")
+        gene_name = annlist[3]
+        return( gene_name )
+    return( False )
 
 def sample_quality_control( record ):
     """
@@ -334,7 +373,9 @@ def check_pileupread( pileupread ):
 def check_gl_som( record ):
     germline = None
     somatic = None
-
+    if record.INFO['SUBCLONAL_CONTROLS'] == 0 and record.INFO['CLONAL_CONTROLS'] == 0 and record.INFO['SUBCLONAL_SAMPLES'] == 0 and record.INFO['CLONAL_SAMPLES'] == 0:
+        somatic = False
+        germline = False
     if ( record.INFO['ABSENT_CONTROLS'] > 0 and record.INFO['CLONAL_CONTROLS'] == 0 and record.INFO['SUBCLONAL_CONTROLS'] == 0 ):
         if ( record.INFO['CLONAL_SAMPLES'] > 0 ):
         # if ( record.INFO['CLONAL_SAMPLES'] > 0 or record.INFO['SUBCLONAL_SAMPLES'] > 0 ):
@@ -555,12 +596,14 @@ def merge_tmp_vcfs():
     # Loop through all chromomsomes
     for contig in contig_list:
         if not header:
-            os.system('cat SMuRF_tmp/{}_drivers.vcf > {}_drivers.vcf'.format(contig, vcf_name))
+            os.system('cat SMuRF_tmp/{}_drivers_others.vcf > {}_drivers_others.vcf'.format(contig, vcf_name))
+            os.system('cat SMuRF_tmp/{}_drivers_FP.vcf > {}_drivers_FP.vcf'.format(contig, vcf_name))
             os.system('cat SMuRF_tmp/{}_drivers_GL.vcf > {}_drivers_GL.vcf'.format(contig, vcf_name))
             os.system('cat SMuRF_tmp/{}_drivers_SOM.vcf > {}_drivers_SOM.vcf'.format(contig, vcf_name))
             header = True
         else:
-            os.system('grep -v \'^#\' SMuRF_tmp/{}_drivers.vcf >> {}_drivers.vcf'.format(contig, vcf_name))
+            os.system('grep -v \'^#\' SMuRF_tmp/{}_drivers_others.vcf >> {}_drivers_others.vcf'.format(contig, vcf_name))
+            os.system('grep -v \'^#\' SMuRF_tmp/{}_drivers_FP.vcf >> {}_drivers_FP.vcf'.format(contig, vcf_name))
             os.system('grep -v \'^#\' SMuRF_tmp/{}_drivers_GL.vcf >> {}_drivers_GL.vcf'.format(contig, vcf_name))
             os.system('grep -v \'^#\' SMuRF_tmp/{}_drivers_SOM.vcf >> {}_drivers_SOM.vcf'.format(contig, vcf_name))
 
