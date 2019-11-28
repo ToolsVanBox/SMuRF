@@ -684,7 +684,6 @@ def create_blacklist():
     # Loop through every blacklist file given on the command line
     blacklists = []
     for bl_vcf in cfg['SMuRF']['blacklist'].split(","):
-        print(bl_vcf)
         blacklist_single = pd.read_csv(bl_vcf,
                                            sep="\t",
                                            comment="#",
@@ -744,7 +743,8 @@ def add_responsibilities():
         # Add VAF information to the format field of each sample
         record.FORMAT = ":".join(format_list)
         vcf_writer.write_record(record)
-    os.system("rm -rf SMuRF_tmp/*")
+    # os.system("rm -rf SMuRF_tmp/*")
+    time.sleep(5)
     os.system("rm -rf SMuRF_tmp")
 
 if __name__ == "__main__":

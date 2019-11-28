@@ -594,6 +594,8 @@ def merge_tmp_vcfs():
             os.system('grep -v \'^#\' SMuRF_tmp/{}_drivers_FP.vcf >> {}_drivers_FP.vcf'.format(contig, vcf_name))
             os.system('grep -v \'^#\' SMuRF_tmp/{}_drivers_GL.vcf >> {}_drivers_GL.vcf'.format(contig, vcf_name))
             os.system('grep -v \'^#\' SMuRF_tmp/{}_drivers_SOM.vcf >> {}_drivers_SOM.vcf'.format(contig, vcf_name))
+    time.sleep(5)
+    os.system("rm -rf SMuRF_tmp")
 
 if __name__ == "__main__":
     #get_command_line()
