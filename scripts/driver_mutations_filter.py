@@ -11,32 +11,20 @@ import queue
 import re
 import numpy as np
 import pysam
+import configparser
 
 # Set arguments
 parser = argparse.ArgumentParser()
 parser = argparse.ArgumentParser(description='Put here a description.')
 parser.add_argument('-i', '--input', type=str, help='Input indexed vcf.gz file', required=True)
-parser.add_argument('-t', '--threads', default=8, type=int, help="Number of threads (default: %(default)s)")
-parser.add_argument('-f', '--effect', default="MODERATE|HIGH", type=str, help="Filter on effect (default: %(default)s)")
-parser.add_argument('-g', '--genes', default=[], action='append', nargs="*", type=str, help='Input genes list for germline filtering')
-parser.add_argument('-q', '--qual', default=60, type=int, help="Flag variants with a low QUAL value (default: %(default)s)")
-parser.add_argument('-mq', '--mq', default=30, type=int, help="Flag variants with a low MQ value (default: %(default)s)")
-parser.add_argument('-ct', '--clonal_threshold', default=0.3, type=float, help="Sample reported as subclonal if VAF is lower (default: %(default)s)")
-parser.add_argument('-at', '--absent_threshold', default=0.0, type=float, help="Sample reported as absent if VAF is lower(default: %(default)s)")
-parser.add_argument('-sgq11','--sample_gq_homozygous', default=10, type=int, help="Minimal Genome Quality of a homozygous SNV in a sample (default: %(default)s)")
-parser.add_argument('-sgq01','--sample_gq_heterozygous', default=20, type=int, help="Minimal Genome Quality of a heterozygous SNV in a sample (default: %(default)s)")
-parser.add_argument('-cgq11','--control_gq_homozygous', default=10, type=int, help="Minimal Genome Quality of a homozygous SNV in a control (default: %(default)s)")
-parser.add_argument('-cgq01','--control_gq_heterozygous', default=10, type=int, help="Minimal Genome Quality of a heterozygous SNV in a control (default: %(default)s)")
-parser.add_argument('-igq11','--indel_gq_homozygous', default=60, type=int, help="Minimal Genome Quality of a homozygous indel (default: %(default)s)")
-parser.add_argument('-igq01','--indel_gq_heterozygous', default=60, type=int, help="Minimal Genome Quality of a heterozygous indel (default: %(default)s)")
-parser.add_argument('-igq00','--indel_gq_homref', default=20, type=int, help="Minimal Genome Quality of a homozygous reference indel (default: %(default)s)")
-parser.add_argument('-cov', '--coverage', default=10, type=int, help="Flag variants with a low COV value (default: %(default)s)")
-parser.add_argument('-m', '--mapq', default=0, type=int, help="Include only reads with a minimal mapq (default: %(default)s)")
-parser.add_argument('-p', '--base_phred_quality', default=0, type=int, help="Include only bases with a minimal base phred quality (default: %(default)s)")
-parser.add_argument('-indel', '--indel', default=True, action='store_false', help="Exclude indels")
+parser.add_argument('-c','--config', default=os.path.dirname(os.path.abspath(__file__))+"/../config.ini",type=str,help='Give the full path to your own ini file (default: %(default)s)')
 args = parser.parse_args()
 
-args.genes = [x for l in args.genes for x in l]
+cfg = configparser.ConfigParser()
+if not args.config == os.path.dirname(os.path.abspath(__file__))+"/../config.ini":
+    cfg.read([os.path.dirname(os.path.abspath(__file__))+"/../config.ini", args.config])
+else:
+    cfg.read(args.config)
 
 vcf_reader = pyvcf.Reader(filename=args.input, encoding='utf-8')
 vcf_name = os.path.basename(args.input)
@@ -47,9 +35,9 @@ bam_sample_names = collections.defaultdict(dict)
 genes_table = {}
 
 
-args.control = []
-for control in re.findall(r"--control\s+(\S+)", vcf_reader.metadata['SMuRFCmd'][0]):
-    args.control.append(control)
+args.normal = []
+for control in re.findall(r"--normal\s+(\S+)", vcf_reader.metadata['SMuRFCmd'][0]):
+    args.normal.append(control)
 args.bam = []
 for bam in re.findall(r"--bam\s+(\S+)", vcf_reader.metadata['SMuRFCmd'][0]):
     args.bam.append(bam)
@@ -78,7 +66,7 @@ def main():
         q.put(contig)
 
     # Create number of processes to parse the vcf file
-    processes = [mp.Process(target=parse_chr_vcf, args=(q, q_out, vcf_reader)) for x in range(args.threads)]
+    processes = [mp.Process(target=parse_chr_vcf, args=(q, q_out, vcf_reader)) for x in range(int(cfg['Driver']['threads']))]
 
     for p in processes:
         p.start()
@@ -101,7 +89,7 @@ def main():
     for p in processes:
         p.join()
 
-    genes_table_file = open("genes_table.txt",'w')
+    genes_table_file = open("{}_drivers_genes_table.txt".format(vcf_name),'w')
     genes_table_file.write( "\t".join(['gene','germline','somatic','other', 'FP']) + "\n" )
     for gene_name in genes_table:
         outline = [gene_name]
@@ -144,10 +132,10 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader):
                         record.FILTER.remove(fil)
                     gl = True
                 if not record.FILTER:
-                    if record.QUAL < args.qual:
+                    if record.QUAL < int(cfg['Driver']['qual']):
                         record.FILTER.append('BadQual')
                         write = False
-                    elif record.INFO['MQ'] < args.mq:
+                    elif record.INFO['MQ'] < int(cfg['Driver']['mq']):
                         record.FILTER.append('BadMQ')
                         write = False
                     elif sample_quality_control( record ):
@@ -221,36 +209,36 @@ def sample_quality_control( record ):
         # update_call_data(call, ['FT'], [None], vcf_reader)
 
         # Check is the sample is in the control list
-        if call.sample in args.control:
+        if call.sample in args.normal:
             sample = False
         # QC fails if there is no genotype
         if call['GT'] == './.':
             qc[sample][call.sample] = 'NoGenoType'
         # QC fails if the coverage is too low
-        elif (call['DP'] == None or call['DP'] < args.coverage):
+        elif (call['DP'] == None or call['DP'] < int(cfg['Driver']['coverage'])):
             qc[sample][call.sample] = 'LowCov'
         elif sample:
             # If sample is homozygous reference
             if call['GT'] == '0/0':
                 noSampleEvidence += 1
-                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_homref):
+                if indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['indel_gq_homref'])):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < args.sample_gq_homozygous):
+                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['sample_gq_homozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'
             # Check QC for homozygous variant
             elif call['GT'] == '1/1':
-                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_homozygous):
+                if indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['indel_gq_homozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < args.sample_gq_homozygous):
+                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['sample_gq_homozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'
             elif call['GT'] == '0/1':
-                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_heterozygous):
+                if indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['indel_gq_heterozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < args.sample_gq_heterozygous):
+                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['sample_gq_heterozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'
@@ -258,24 +246,24 @@ def sample_quality_control( record ):
             # If variant is also found in a control
             if call['GT'] == '0/1':
                 controlEvidence = True
-                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_heterozygous):
+                if indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['indel_gq_heterozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < args.control_gq_heterozygous):
+                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['control_gq_heterozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'
             elif call['GT'] == '1/1':
                 controlEvidence = True
-                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_homozygous):
+                if indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['indel_gq_homozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < args.control_gq_homozygous):
+                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['control_gq_homozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'
             elif call['GT'] == '0/0':
-                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_homref):
+                if indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['indel_gq_homref'])):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < args.control_gq_homozygous):
+                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['control_gq_homozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'
@@ -312,7 +300,7 @@ def sample_quality_control( record ):
     return( check )
 
 def create_genes_list():
-    for genes_file in args.genes:
+    for genes_file in cfg['Driver']['genes'].split(","):
         with(open(genes_file,'r')) as f:
             for line in f:
                 line = line.rstrip()
@@ -323,8 +311,8 @@ def ann_check( record ):
     if 'ANN' in record.INFO:
         for ann in record.INFO['ANN']:
             annlist = ann.split("|")
-            if re.search(args.effect, annlist[2]) is not None:
-                if len(args.genes) > 0:
+            if re.search(cfg['Driver']['effect'], annlist[2]) is not None:
+                if len(cfg['Driver']['genes'].split(",")) > 0:
                     if annlist[3] in genes_list:
                         ann_check = True
                 else:
@@ -363,9 +351,9 @@ def check_pileupread( pileupread ):
         check = False
     elif not pileupread.query_position:
         check = False
-    elif pileupread.alignment.mapq < args.mapq:
+    elif pileupread.alignment.mapq < int(cfg['Driver']['mapq']):
         check = False
-    elif pileupread.alignment.query_qualities[pileupread.query_position] < args.base_phred_quality:
+    elif pileupread.alignment.query_qualities[pileupread.query_position] < int(cfg['Driver']['base_phred_quality']):
         check = False
 
     return( check )
@@ -436,7 +424,7 @@ def calculate_vaf( record ):
         dr = 0
         vaf = 0.0
         # Loop through each reads that is overlapping the position of the variant
-        for pileupcolumn in F.pileup(record.CHROM, int(record.POS)-1, int(record.POS), truncate=True, stepper='nofilter',min_base_quality=args.base_phred_quality):
+        for pileupcolumn in F.pileup(record.CHROM, int(record.POS)-1, int(record.POS), truncate=True, stepper='nofilter',min_base_quality=int(cfg['Driver']['base_phred_quality'])):
             for pileupread in pileupcolumn.pileups:
                 # QC the read
                 if ( check_pileupread( pileupread) ):
@@ -481,16 +469,16 @@ def calculate_vaf( record ):
         # Loop through each sample in the vcf file
         for call in (record.samples):
             sample = True
-            if call.sample in args.control:
+            if call.sample in args.normal:
                 sample = False
             # Check if the sample name in the vcf file is the same as a sample name in the bam file
             if call.sample == sample_name:
                 # Add the VAF and sample name to the output tuple
-                if vaf > args.absent_threshold and call.sample not in args.control:
+                if vaf > float(cfg['Driver']['absent_threshold']) and call.sample not in args.normal:
                     record_vaf[call.sample] = vaf
                 # Update the format field for this sample
                 ft = call['FT']
-                if float(dv+dr) < args.coverage:
+                if float(dv+dr) < int(cfg['Driver']['coverage']):
             	     ft = 'LowCov'
             	     qc[sample][call.sample] = 'LowCov'
                 else:
@@ -498,9 +486,9 @@ def calculate_vaf( record ):
                 update_call_data(call, ['VAF','CAD','FT'], [vaf, [dr, dv], ft], vcf_reader)
 
                 # Set absent, subclonal or clonal based on the VAF and threshold
-                if vaf <= args.absent_threshold:
+                if vaf <= float(cfg['Driver']['absent_threshold']):
                     vaf_info[sample]['ABSENT'].append(call.sample)
-                elif vaf < args.clonal_threshold:
+                elif vaf < float(cfg['Driver']['clonal_threshold']):
                     vaf_info[sample]['SUBCLONAL'].append(call.sample)
                 else:
                     vaf_info[sample]['CLONAL'].append(call.sample)

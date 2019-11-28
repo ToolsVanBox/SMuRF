@@ -19,33 +19,44 @@ import re
 from sklearn.mixture import GaussianMixture
 from matplotlib.backends.backend_pdf import PdfPages
 import warnings
-import configparser
 
 # Get version from git
 #__version__ = subprocess.check_output(["git", "describe"]).strip().decode('UTF-8')
-__version__ = 'v2.1.0'
+__version__ = 'v2.0.0'
 
 # Set arguments
 parser = argparse.ArgumentParser()
 parser = argparse.ArgumentParser(description='Put here a description.')
 parser.add_argument('-i', '--input', type=str, help='Input indexed vcf.gz file', required=True)
 parser.add_argument('-b', '--bam', action='append', nargs="*", type=str, help='Input bam file', required=True)
-parser.add_argument('-n', '--normal', action='append', type=str, help='Normal sample name')
-parser.add_argument('-c','--config', default=os.path.dirname(os.path.abspath(__file__))+"/config.ini",type=str,help='Give the full path to your own ini file (default: %(default)s)')
+parser.add_argument('-t', '--threads', default=8, type=int, help="Number of threads (default: %(default)s)")
+parser.add_argument('-c', '--control', action='append', type=str, help='Control sample name')
+parser.add_argument('-bl', '--blacklist', action='append', type=str, help='Black list vcf or bed file. Multiple files can be used.')
+parser.add_argument('-q', '--qual', default=100, type=int, help="Flag variants with a low QUAL value (default: %(default)s)")
+parser.add_argument('-mq', '--mq', default=60, type=int, help="Flag variants with a low MQ value (default: %(default)s)")
+parser.add_argument('-sgq11','--sample_gq_homozygous', default=10, type=int, help="Minimal Genome Quality of a homozygous SNV in a sample (default: %(default)s)")
+parser.add_argument('-sgq01','--sample_gq_heterozygous', default=99, type=int, help="Minimal Genome Quality of a heterozygous SNV in a sample (default: %(default)s)")
+parser.add_argument('-cgq11','--control_gq_homozygous', default=10, type=int, help="Minimal Genome Quality of a homozygous SNV in a control (default: %(default)s)")
+parser.add_argument('-cgq01','--control_gq_heterozygous', default=10, type=int, help="Minimal Genome Quality of a heterozygous SNV in a control (default: %(default)s)")
+parser.add_argument('-igq11','--indel_gq_homozygous', default=99, type=int, help="Minimal Genome Quality of a homozygous indel (default: %(default)s)")
+parser.add_argument('-igq01','--indel_gq_heterozygous', default=99, type=int, help="Minimal Genome Quality of a heterozygous indel (default: %(default)s)")
+parser.add_argument('-igq00','--indel_gq_homref', default=20, type=int, help="Minimal Genome Quality of a homozygous reference indel (default: %(default)s)")
+parser.add_argument('-cov', '--coverage', default=10, type=int, help="Flag variants with a low COV value (default: %(default)s)")
+parser.add_argument('-ct', '--clonal_threshold', default=0.3, type=float, help="Sample reported as subclonal if VAF is lower (default: %(default)s)")
+parser.add_argument('-at', '--absent_threshold', default=0.0, type=float, help="Sample reported as absent if VAF is lower(default: %(default)s)")
+parser.add_argument('-m', '--mapq', default=0, type=int, help="Include only reads with a minimal mapq (default: %(default)s)")
+parser.add_argument('-p', '--base_phred_quality', default=0, type=int, help="Include only bases with a minimal base phred quality (default: %(default)s)")
+parser.add_argument('-minc','--min_components', default=2,type=int,help="Minimal number of components (default: %(default)s)")
+parser.add_argument('-maxc','--max_components',default=3,type=int,help="Maximal number of components (default: %(default)s)")
+parser.add_argument('-indel', '--indel', default=True, action='store_false', help="Exclude indels")
 parser.add_argument('-v', '--version', action='version', version=__version__)
 args = parser.parse_args()
 
 # Flatten input list of bam files
 args.bam = [x for l in args.bam for x in l]
 # Set default control None if no control is given at the command line
-if not args.normal:
-    args.normal = [ None ]
-
-cfg = configparser.ConfigParser()
-if not args.config == os.path.dirname(os.path.abspath(__file__))+"/config.ini":
-    cfg.read([os.path.dirname(os.path.abspath(__file__))+"/config.ini", args.config])
-else:
-    cfg.read(args.config)
+if not args.control:
+    args.control = [ None ]
 
 # Read the vcf, fix and add fields to the header
 vcf_reader = pyvcf.Reader(filename=args.input, encoding='utf-8')
@@ -81,7 +92,7 @@ def main():
         q.put(contig)
 
     # Create number of processes to parse the vcf file
-    processes = [mp.Process(target=parse_chr_vcf, args=(q, q_out, vcf_reader, args.bam)) for x in range(int(cfg['SMuRF']['threads']))]
+    processes = [mp.Process(target=parse_chr_vcf, args=(q, q_out, vcf_reader, args.bam)) for x in range(args.threads)]
 
     for p in processes:
         p.start()
@@ -133,15 +144,15 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
 
                     if record.ID and "COSM" not in record.ID:
                         record.FILTER.append('KnownVariant')
-                    elif record.QUAL < int(cfg['SMuRF']['qual']):
+                    elif record.QUAL < args.qual:
                         record.FILTER.append('BadQual')
                     elif len(record.ALT) > 1:
                         record.FILTER.append('MultiAllelic')
-                    elif record.INFO['MQ'] < int(cfg['SMuRF']['mq']):
+                    elif record.INFO['MQ'] < args.mq:
                         record.FILTER.append('BadMQ')
                     elif chr in blacklist and record.POS in blacklist[chr]:
                         record.FILTER.append("BlackList")
-                    elif (len(record.ALT[0]) > 1 or len(record.REF) > 1) and not cfg['SMuRF']['indel']:
+                    elif (len(record.ALT[0]) > 1 or len(record.REF) > 1) and not args.indel:
                         record.FILTER.append("Indel")
                     elif sample_quality_control( record ):
                         for s,v in calculate_vaf( record ).items():
@@ -198,8 +209,8 @@ def add_vcf_header( vcf_reader ):
 
     # Filters
     vcf_reader.filters['KnownVariant'] = pyvcf.parser._Filter('KnownVariant','Variant has already an ID, excluding COSMIC_IDs')
-    vcf_reader.filters['BadMQ'] = pyvcf.parser._Filter('BadMQ', 'Variant with MQ <'+str(cfg['SMuRF']['mq']))
-    vcf_reader.filters['BadQual'] = pyvcf.parser._Filter('BadQual','Variant with a QUAL <'+str(cfg['SMuRF']['qual']))
+    vcf_reader.filters['BadMQ'] = pyvcf.parser._Filter('BadMQ', 'Variant with MQ <'+str(args.mq))
+    vcf_reader.filters['BadQual'] = pyvcf.parser._Filter('BadQual','Variant with a QUAL <'+str(args.qual))
     vcf_reader.filters['MultiAllelic'] = pyvcf.parser._Filter('MultiAllelic', 'Variant has multiple alternative alleles')
     vcf_reader.filters['BlackList'] = pyvcf.parser._Filter('BlackList', 'Variant exists in a blacklist')
     vcf_reader.filters['Indel'] = pyvcf.parser._Filter('Indel','Variant is an indel')
@@ -211,7 +222,7 @@ def add_vcf_header( vcf_reader ):
     vcf_reader.filters['ControlClonal'] = pyvcf.parser._Filter('ControlClonal', 'Variant is found as clonal in a control based on the recalculated VAF')
     vcf_reader.filters['NoClonalSample'] = pyvcf.parser._Filter('NoClonalSample', 'Variant is not found as clonal in any of the samples based on the recalculated VAF')
     # Sample filters
-    vcf_reader.filters['LowCov'] = pyvcf.parser._Filter('LowCov', 'Variant has a coverage <'+str(cfg['SMuRF']['coverage'])+' in this sample/control')
+    vcf_reader.filters['LowCov'] = pyvcf.parser._Filter('LowCov', 'Variant has a coverage <'+str(args.coverage)+' in this sample/control')
     vcf_reader.filters['NoGenoType'] = pyvcf.parser._Filter('NoGenoType', 'Genotype is empty for this sample/control')
     vcf_reader.filters['isRef'] = pyvcf.parser._Filter('isRef', 'Genotype is a reference (i.e. reference 0/0)')
     vcf_reader.filters['isVariant'] = pyvcf.parser._Filter('isVariant', 'Genotype is a variant (i.e. not reference 0/0)')
@@ -273,9 +284,9 @@ def check_pileupread( pileupread ):
         check = False
     elif not pileupread.query_position:
         check = False
-    elif pileupread.alignment.mapq < int(cfg['SMuRF']['mapq']):
+    elif pileupread.alignment.mapq < args.mapq:
         check = False
-    elif pileupread.alignment.query_qualities[pileupread.query_position] < int(cfg['SMuRF']['base_phred_quality']):
+    elif pileupread.alignment.query_qualities[pileupread.query_position] < args.base_phred_quality:
         check = False
 
     return( check )
@@ -323,7 +334,7 @@ def gmm( X ):
     #  mixture of Gaussians for the data
 
     # fit models with 2 components
-    N = np.arange(int(cfg['SMuRF']['min_components']), int(cfg['SMuRF']['max_components']))
+    N = np.arange(args.min_components, args.max_components)
 
     models = [None for i in range(len(N))]
     for i in range(len(N)):
@@ -441,36 +452,36 @@ def sample_quality_control( record ):
         update_call_data(call, ['FT'], [None], vcf_reader)
 
         # Check is the sample is in the control list
-        if call.sample in args.normal:
+        if call.sample in args.control:
             sample = False
         # QC fails if there is no genotype
         if call['GT'] == './.':
             qc[sample][call.sample] = 'NoGenoType'
         # QC fails if the coverage is too low
-        elif (call['DP'] == None or call['DP'] < int(cfg['SMuRF']['coverage'])):
+        elif (call['DP'] == None or call['DP'] < args.coverage):
             qc[sample][call.sample] = 'LowCov'
         elif sample:
             # If sample is homozygous reference
             if call['GT'] == '0/0':
                 noSampleEvidence += 1
-                if indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['indel_gq_homref'])):
+                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_homref):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['sample_gq_homozygous'])):
+                elif not indel and (not call['GQ'] or call['GQ'] < args.sample_gq_homozygous):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'
             # Check QC for homozygous variant
             elif call['GT'] == '1/1':
-                if indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['indel_gq_homozygous'])):
+                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_homozygous):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['sample_gq_homozygous'])):
+                elif not indel and (not call['GQ'] or call['GQ'] < args.sample_gq_homozygous):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'
             elif call['GT'] == '0/1':
-                if indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['indel_gq_heterozygous'])):
+                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_heterozygous):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['sample_gq_heterozygous'])):
+                elif not indel and (not call['GQ'] or call['GQ'] < args.sample_gq_heterozygous):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'
@@ -478,24 +489,24 @@ def sample_quality_control( record ):
             # If variant is also found in a control
             if call['GT'] == '0/1':
                 controlEvidence = True
-                if indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['indel_gq_heterozygous'])):
+                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_heterozygous):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['control_gq_heterozygous'])):
+                elif not indel and (not call['GQ'] or call['GQ'] < args.control_gq_heterozygous):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'isVariant'
             elif call['GT'] == '1/1':
                 controlEvidence = True
-                if indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['indel_gq_homozygous'])):
+                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_homozygous):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['control_gq_homozygous'])):
+                elif not indel and (not call['GQ'] or call['GQ'] < args.control_gq_homozygous):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'isVariant'
             elif call['GT'] == '0/0':
-                if indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['indel_gq_homref'])):
+                if indel and (not call['GQ'] or call['GQ'] < args.indel_gq_homref):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['control_gq_homozygous'])):
+                elif not indel and (not call['GQ'] or call['GQ'] < args.control_gq_homozygous):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'
@@ -557,7 +568,7 @@ def calculate_vaf( record ):
         dr = 0
         vaf = 0.0
         # Loop through each reads that is overlapping the position of the variant
-        for pileupcolumn in F.pileup(record.CHROM, int(record.POS)-1, int(record.POS), truncate=True, stepper='nofilter',min_base_quality=int(cfg['SMuRF']['base_phred_quality'])):
+        for pileupcolumn in F.pileup(record.CHROM, int(record.POS)-1, int(record.POS), truncate=True, stepper='nofilter',min_base_quality=args.base_phred_quality):
             for pileupread in pileupcolumn.pileups:
                 # QC the read
                 if ( check_pileupread( pileupread) ):
@@ -602,16 +613,16 @@ def calculate_vaf( record ):
         # Loop through each sample in the vcf file
         for call in (record.samples):
             sample = True
-            if call.sample in args.normal:
+            if call.sample in args.control:
                 sample = False
             # Check if the sample name in the vcf file is the same as a sample name in the bam file
             if call.sample == sample_name:
                 # Add the VAF and sample name to the output tuple
-                if vaf > float(cfg['SMuRF']['absent_threshold']) and call.sample not in args.normal:
+                if vaf > args.absent_threshold and call.sample not in args.control:
                     record_vaf[call.sample] = vaf
                 # Update the format field for this sample
                 ft = call['FT']
-                if float(dv+dr) < int(cfg['SMuRF']['coverage']):
+                if float(dv+dr) < args.coverage:
             	     ft = 'LowCov'
             	     qc[sample][call.sample] = 'LowCov'
                 else:
@@ -619,9 +630,9 @@ def calculate_vaf( record ):
                 update_call_data(call, ['VAF','CAD','FT'], [vaf, [dr, dv], ft], vcf_reader)
 
                 # Set absent, subclonal or clonal based on the VAF and threshold
-                if vaf <= float(cfg['SMuRF']['absent_threshold']):
+                if vaf <= args.absent_threshold:
                     vaf_info[sample]['ABSENT'].append(call.sample)
-                elif vaf < float(cfg['SMuRF']['clonal_threshold']):
+                elif vaf < args.clonal_threshold:
                     vaf_info[sample]['SUBCLONAL'].append(call.sample)
                 else:
                     vaf_info[sample]['CLONAL'].append(call.sample)
@@ -683,8 +694,7 @@ def create_blacklist():
     # global blacklist
     # Loop through every blacklist file given on the command line
     blacklists = []
-    for bl_vcf in cfg['SMuRF']['blacklist'].split(","):
-        print(bl_vcf)
+    for bl_vcf in args.blacklist:
         blacklist_single = pd.read_csv(bl_vcf,
                                            sep="\t",
                                            comment="#",
