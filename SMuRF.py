@@ -43,7 +43,7 @@ if not args.normal:
 
 cfg = configparser.ConfigParser()
 if not os.path.exists(args.config):
-    sys.stderr.write("Config file "+args.config+" does not exists")
+    sys.stderr.write("Config file "+args.config+" does not exists\n")
     sys.exit()
 
 if not args.config == os.path.dirname(os.path.abspath(__file__))+"/config.ini":
