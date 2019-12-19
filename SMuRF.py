@@ -42,6 +42,10 @@ if not args.normal:
     args.normal = [ None ]
 
 cfg = configparser.ConfigParser()
+if not os.path.exists(args.config):
+    sys.stderr.write("Config file "+args.config+" does not exists")
+    sys.exit()
+
 if not args.config == os.path.dirname(os.path.abspath(__file__))+"/config.ini":
     cfg.read([os.path.dirname(os.path.abspath(__file__))+"/config.ini", args.config])
 else:
@@ -455,7 +459,7 @@ def sample_quality_control( record ):
                 noSampleEvidence += 1
                 if indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['indel_gq_homref'])):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['sample_gq_homozygous'])):
+                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['sample_gq_homref'])):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'
@@ -495,7 +499,7 @@ def sample_quality_control( record ):
             elif call['GT'] == '0/0':
                 if indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['indel_gq_homref'])):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['control_gq_homozygous'])):
+                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['control_gq_homref'])):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'

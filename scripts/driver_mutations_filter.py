@@ -103,7 +103,7 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader):
     Function to parse the vcf per contig.
     Write the new record to a vcf file.
     Input: Queue object
-    Input: Queue out object
+    Input: Queue out objectl
     Input: VCF reader object
     Input: List with the bam names
     """
@@ -223,7 +223,7 @@ def sample_quality_control( record ):
                 noSampleEvidence += 1
                 if indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['indel_gq_homref'])):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['sample_gq_homozygous'])):
+                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['sample_gq_homref'])):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'
@@ -263,7 +263,7 @@ def sample_quality_control( record ):
             elif call['GT'] == '0/0':
                 if indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['indel_gq_homref'])):
                     qc[sample][call.sample] = 'LowGQ'
-                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['control_gq_homozygous'])):
+                elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['Driver']['control_gq_homref'])):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'
@@ -359,8 +359,8 @@ def check_pileupread( pileupread ):
     return( check )
 
 def check_gl_som( record ):
-    germline = None
-    somatic = None
+    germline = 'None'
+    somatic = 'None'
     if record.INFO['SUBCLONAL_CONTROLS'] == 0 and record.INFO['CLONAL_CONTROLS'] == 0 and record.INFO['SUBCLONAL_SAMPLES'] == 0 and record.INFO['CLONAL_SAMPLES'] == 0:
         somatic = False
         germline = False
@@ -368,12 +368,14 @@ def check_gl_som( record ):
         if ( record.INFO['CLONAL_SAMPLES'] > 0 ):
         # if ( record.INFO['CLONAL_SAMPLES'] > 0 or record.INFO['SUBCLONAL_SAMPLES'] > 0 ):
             somatic = True
+            germline = False
     if ( record.INFO['ABSENT_CONTROLS'] == 0 and record.INFO['CLONAL_CONTROLS'] > 0 ):
     # if ( record.INFO['ABSENT_CONTROLS'] == 0 and ( record.INFO['CLONAL_CONTROLS'] > 0 or record.INFO['SUBCLONAL_CONTROLS'] > 0 ) ):
         if ( record.INFO['ABSENT_SAMPLES'] == 0 and record.INFO['CLONAL_SAMPLES'] > 0 ) :
         # if ( record.INFO['ABSENT_SAMPLES'] == 0 and ( record.INFO['CLONAL_SAMPLES'] > 0 or record.INFO['SUBCLONAL_SAMPLES'] > 0 ) ) :
             germline = True
-
+            if somatic == 'None':
+                somatic = False
     return( germline, somatic)
 
 def update_call_data( call, edit_keys, edit_values, vcf_reader ):
