@@ -196,16 +196,16 @@ else
   INPUT_BGZIP=$(basename $INPUT)
   if [ ! -f $INPUT_BGZIP ]; then
 cat << EOF >> $SMURF_SH
-      ln -s $(realpath INPUT) $(realpath $INPUT_BGZIP)
+      ln -s $(realpath $INPUT) $INPUT_BGZIP
 EOF
   fi
   if [ -f $INPUT.tbi ]; then
 cat << EOF >> $SMURF_SH
-      ln -s $(realpath $INPUT.tbi) $(realpath $INPUT_BGZIP.tbi)
+      ln -s $(realpath $INPUT.tbi) $INPUT_BGZIP.tbi
 EOF
   else
 cat << EOF >> $SMURF_SH
-     $TABIX $(realpath $INPUT_BGZIP)
+     $TABIX $INPUT_BGZIP
 EOF
   fi
 fi
