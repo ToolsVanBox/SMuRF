@@ -51,6 +51,9 @@ if not args.config == os.path.dirname(os.path.abspath(__file__))+"/config.ini":
 else:
     cfg.read(args.config)
 
+with open('SMuRF_config.ini', 'w') as configfile:
+    cfg.write(configfile)
+
 # Read the vcf, fix and add fields to the header
 vcf_reader = pyvcf.Reader(filename=args.input, encoding='utf-8')
 vcf_name = os.path.basename(args.input)

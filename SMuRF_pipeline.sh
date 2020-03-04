@@ -10,6 +10,7 @@ usage() {
     -h|--help                     Shows help
     -o|--outputdir                Output directory ( default: $OUTDIR )
     -n|--normal                   Normal sample name. Multiple sample names can be used
+    -q|--queue                    Queuing system (slurm or sge) (default: $QUEUE)
     -c|--config                   Give the full path to your own ini file (default: $CONFIG)
     -d|--driver                   Run driver genes script (true|false) ( default: $DRIVER )
     -m|--split_mut_type           Run split mutation type script (true|false) (default: $SPLIT_MUT_TYPE)
@@ -30,6 +31,7 @@ SOURCE_DIR=$(dirname $SOURCE)
 CONFIG=$SOURCE_DIR/config.ini
 VENV=$SOURCE_DIR/venv_3.6/bin/activate
 OUTDIR=./
+QUEUE=slurm
 DRIVER=true
 SPLIT_MUT_TYPE=true
 SPLIT_SINGLE_SAMPLE=true
@@ -72,6 +74,11 @@ do
     ;;
     -o|--outputdir)
     OUTDIR=$(realpath $2)
+    shift
+    shift
+    ;;
+    -q|--queue)
+    QUEUE="$2"
     shift
     shift
     ;;
@@ -144,6 +151,10 @@ elif [ ! -f $TABIX ]; then
   echo "TABIX \"$TABIX\" does not exists."
   exit
 fi
+if [[ $QUEUE != slurm && $QUEUE != sge ]]; then
+  echo "QUEUE parameter must be slur or sge"
+  exit
+fi
 if [[ $DRIVER != true && $DRIVER != false ]]; then
   echo "DRIVER parameter must be true or false"
   exit
@@ -154,6 +165,7 @@ elif [[ $SPLIT_SINGLE_SAMPLE != true && $SPLIT_SINGLE_SAMPLE != false ]]; then
   echo "SPLIT_SINGLE_SAMPLE parameter must be true or false"
   exit
 fi
+
 for B in ${BAM[@]}; do
   if [ ! -f $B ]; then
     echo "BAM file \"$B\" does not exists."
@@ -170,7 +182,10 @@ THREADS=`grep "SMuRF" -A 19 /hpc/pmc_vanboxtel/tools/SMuRF/config.ini | grep -m 
 
 cat << EOF > $SMURF_SH
 #!/bin/bash
+EOF
 
+if [ $QUEUE == 'sge' ]; then
+cat << EOF >> $SMURF_SH
 #$ -N SMuRF
 #$ -cwd
 #$ -pe threaded $THREADS
@@ -178,7 +193,19 @@ cat << EOF > $SMURF_SH
 #$ -l h_rt=$TIME
 #$ -e $SMURF_ERR
 #$ -o $SMURF_LOG
+EOF
+elif [ $QUEUE == 'slurm' ]; then
+cat << EOF >> $SMURF_SH
+#SBATCH --job-name=SMuRF
+#SBATCH -c $THREADS
+#SBATCH --mem=$MEM
+#SBATCH --time=$TIME
+#SBATCH -e $SMURF_ERR
+#SBATCH -o $SMURF_LOG
+EOF
+fi
 
+cat << EOF >> $SMURF_SH
 cd $(realpath $OUTDIR)
 
 . $VENV
