@@ -90,10 +90,10 @@ def main():
         p.join()
 
     genes_table_file = open("{}_drivers_genes_table.txt".format(vcf_name),'w')
-    genes_table_file.write( "\t".join(['gene','germline','somatic','other', 'FP']) + "\n" )
+    genes_table_file.write( "\t".join(['gene','somatic','FP']) + "\n" )
     for gene_name in genes_table:
         outline = [gene_name]
-        for mut_type in ['GL','SOM','OTHER', 'FP']:
+        for mut_type in ['SOM','FP']:
             outline.append(str(genes_table[gene_name][mut_type]))
         genes_table_file.write( "\t".join(outline) + "\n")
     genes_table_file.close()
@@ -113,7 +113,7 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader):
             contig = q.get(block=False,timeout=1)
             contig_vcf_other_drivers_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_drivers_others.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
             contig_vcf_FP_drivers_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_drivers_FP.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
-            contig_vcf_GL_drivers_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_drivers_GL.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
+#            contig_vcf_GL_drivers_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_drivers_GL.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
             contig_vcf_SOM_drivers_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_drivers_SOM.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
             contig_genes_table = {}
             try:
@@ -152,29 +152,33 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader):
                                 write = False
                                 continue
                             if gl and not som:
-                                gene_name = get_gene_name( record )
-                                if gene_name not in contig_genes_table:
-                                    contig_genes_table[gene_name] = {"GL":0, "SOM":0, "OTHER":0, "FP":0 }
-                                contig_genes_table[gene_name]['GL'] += 1
-                                contig_vcf_GL_drivers_writer.write_record(record)
+                                write = False
+                                continue
+#                                gene_name = get_gene_name( record )
+#                                if gene_name not in contig_genes_table:
+#                                    contig_genes_table[gene_name] = {"GL":0, "SOM":0, "OTHER":0, "FP":0 }
+#                                contig_genes_table[gene_name]['GL'] += 1
+#                                contig_vcf_GL_drivers_writer.write_record(record)
                             elif not gl and som:
                                 gene_name = get_gene_name( record )
                                 if gene_name not in contig_genes_table:
-                                    contig_genes_table[gene_name] = {"GL":0, "SOM":0, "OTHER":0, "FP":0 }
+                                    contig_genes_table[gene_name] = {"SOM":0, "FP":0 }
                                 contig_genes_table[gene_name]['SOM'] += 1
                                 contig_vcf_SOM_drivers_writer.write_record(record)
                             elif not gl and not som:
                                 gene_name = get_gene_name( record )
                                 if gene_name not in contig_genes_table:
-                                    contig_genes_table[gene_name] = {"GL":0, "SOM":0, "OTHER":0, "FP":0 }
+                                    contig_genes_table[gene_name] = {"SOM":0, "FP":0 }
                                 contig_genes_table[gene_name]['FP'] += 1
                                 contig_vcf_FP_drivers_writer.write_record(record)
                             else:
-                                gene_name = get_gene_name( record )
-                                if gene_name not in contig_genes_table:
-                                    contig_genes_table[gene_name] = {"GL":0, "SOM":0, "OTHER":0, "FP":0 }
-                                contig_genes_table[gene_name]['OTHER'] += 1
-                                contig_vcf_other_drivers_writer.write_record(record)
+                                write = False
+                                continue
+#                                gene_name = get_gene_name( record )
+#                                if gene_name not in contig_genes_table:
+#                                    contig_genes_table[gene_name] = {"SOM":0, "OTHER":0, "FP":0 }
+#                                contig_genes_table[gene_name]['OTHER'] += 1
+#                                contig_vcf_other_drivers_writer.write_record(record)
             q_out.put( contig_genes_table )
 
         # Break the loop if the queue is empty
