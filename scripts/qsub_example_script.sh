@@ -18,7 +18,7 @@ else
   VCF_BGZIP=$VCF
 fi
 
-SMURF_VCF=${VCF_BGZIP/.vcf.gz/_SMuRF.vcf}
+SMURF_VCF=${VCF_BGZIP%.vcf.gz}_SMuRF.vcf
 SMURF_VCF_BGZIP=$SMURF_VCF.gz
 
 . /hpc/pmc_vanboxtel/tools/SMuRF/venv_3.6/bin/activate
@@ -36,4 +36,4 @@ $TABIX $SMURF_VCF_BGZIP
 
 python /hpc/pmc_vanboxtel/tools/SMuRF/scripts/driver_mutations_filter.py \
 -i $SMURF_VCF_BGZIP \
--g /hpc/pmc_vanboxtel/data/hotspot_genes/cosmic_cancer_gene_census_09052019.txt 
+-g /hpc/pmc_vanboxtel/data/hotspot_genes/cosmic_cancer_gene_census_09052019.txt

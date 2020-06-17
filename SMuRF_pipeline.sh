@@ -239,7 +239,7 @@ fi
 
 SMURF_VCF=${INPUT_BGZIP/.vcf.gz/_SMuRF.vcf}
 SMURF_VCF_BGZIP=$SMURF_VCF.gz
-SMURF_VCF_FILTERED=${SMURF_VCF/.vcf/_filtered.vcf}
+SMURF_VCF_FILTERED=${SMURF_VCF%.vcf}_filtered.vcf
 
 # # Create bgzip vcf if needed
 # if [[ $INPUT == *.vcf ]]; then
