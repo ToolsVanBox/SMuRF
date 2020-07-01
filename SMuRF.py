@@ -138,6 +138,9 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
                     chr = chr.lower()
                     chr = re.sub("chr|chrom", "", chr)
 
+                    if (len(record.ALT[0]) > 1:
+                        check_flanking_indels(record, contig_vcf_reader)
+
                     if "MQ" not in record.INFO:
                         record.FILTER.append("NoMQtag")
                     if record.ID and "COSM" not in record.ID:
@@ -162,6 +165,21 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
         # Break the loop if the queue is empty
         except queue.Empty:
             break
+
+def check_flanking_indels( record, contig_vcf_reader):
+    for record2 in contig_vcf_reader.fetch(record.CHROM, record.POS-cfg['SMuRF']['indel_flank'], record.POS+cf['SMuRF']['indel_flank']):
+        if (len(record2.ALT[0]) > 1:
+            if (record2.CHROM == record.CHROM and record2.POS == record.POS):
+                continue
+            for call in (record2.samples):
+                sample = True
+                if call.sample in args.normal:
+                    sample = False
+                if not sample and (call['GT'] == '0/1' or call['GT'] == '1/1':
+                    record.FILTER.append("FlankingControlEvidence")
+                    return( 1 )
+    return( 1 )
+
 
 def get_command_line():
     """
