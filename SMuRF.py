@@ -582,6 +582,7 @@ def calculate_vaf( record ):
             sample_name = bam_sample_names[bam]
         dv = 0
         dr = 0
+        dx = 0
         vaf = 0.0
         # Loop through each reads that is overlapping the position of the variant
         for pileupcolumn in F.pileup(record.CHROM, int(record.POS)-1, int(record.POS), truncate=True, stepper='nofilter',min_base_quality=int(cfg['SMuRF']['base_phred_quality'])):
@@ -605,6 +606,8 @@ def calculate_vaf( record ):
                         # Read has no deletion
                         elif pileupread.indel == 0:
                             dr+=1
+                        else:
+                            dx+=1
                     # If variant is an insertion
                     elif ( len(record.REF) == 1 and len(alt) > 1 ):
                         # Read has the insertion
@@ -613,6 +616,8 @@ def calculate_vaf( record ):
                         # Read has no insertion
                         elif pileupread.indel == 0:
                             dr+=1
+                        else:
+                            dx+=1
                     # If variant is an INDEL
                     else:
                         # Read has the INDEL
@@ -621,6 +626,8 @@ def calculate_vaf( record ):
                         # Read has no INDEL
                         elif pileupread.indel == 0:
                             dr+=1
+                        else:
+                            dx+=1
         # Calculate the VAF
         try:
             vaf = float("{0:.2f}".format(dv/float(dv+dr)))
@@ -658,6 +665,8 @@ def calculate_vaf( record ):
     format_list.insert(0,'GT')
     # Add VAF information to the format field of each sample
     record.FORMAT = ":".join(format_list)
+    if not sample and dx > 0:
+        record.FILTER.append('OverlappingIndelInControl')
     # Add QC information to the INFO field
     if len(qc[False].keys()) > 0 and list(qc[False].values()).count('PASS') == 0:
         record.FILTER.append('AllControlsFailedQC')
