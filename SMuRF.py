@@ -138,8 +138,8 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
                     chr = chr.lower()
                     chr = re.sub("chr|chrom", "", chr)
 
-                    if (len(record.ALT[0]) > 1:
-                        check_flanking_indels(record, contig_vcf_reader)
+#                    if (len(record.ALT[0]) > 1):
+#                        check_flanking_indels(record, contig_vcf_reader)
 
                     if "MQ" not in record.INFO:
                         record.FILTER.append("NoMQtag")
@@ -167,15 +167,15 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
             break
 
 def check_flanking_indels( record, contig_vcf_reader):
-    for record2 in contig_vcf_reader.fetch(record.CHROM, record.POS-cfg['SMuRF']['indel_flank'], record.POS+cf['SMuRF']['indel_flank']):
-        if (len(record2.ALT[0]) > 1:
+    for record2 in contig_vcf_reader.fetch(record.CHROM, record.POS-int(cfg['SMuRF']['indel_flank']), record.POS+int(cfg['SMuRF']['indel_flank'])):
+        if (len(record2.ALT[0]) > 1):
             if (record2.CHROM == record.CHROM and record2.POS == record.POS):
                 continue
             for call in (record2.samples):
                 sample = True
                 if call.sample in args.normal:
                     sample = False
-                if not sample and (call['GT'] == '0/1' or call['GT'] == '1/1':
+                if not sample and (call['GT'] == '0/1' or call['GT'] == '1/1'):
                     record.FILTER.append("FlankingControlEvidence")
                     return( 1 )
     return( 1 )
@@ -569,6 +569,7 @@ def calculate_vaf( record ):
     record_vaf = {}
     vaf_info = collections.defaultdict(lambda: collections.defaultdict(list))
     qc = collections.defaultdict(dict)
+    sample = "UNKNOWN"
 
     for call in (record.samples):
         # Add empty VAF and CAD tag to the record
