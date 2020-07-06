@@ -138,6 +138,11 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
                     chr = chr.lower()
                     chr = re.sub("chr|chrom", "", chr)
 
+#                    if (len(record.ALT[0]) > 1):
+#                        check_flanking_indels(record, contig_vcf_reader)
+
+                    if "MQ" not in record.INFO:
+                        record.FILTER.append("NoMQtag")
                     if record.ID and "COSM" not in record.ID:
                         record.FILTER.append('KnownVariant')
                     elif record.QUAL < int(cfg['SMuRF']['qual']):
@@ -160,6 +165,21 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
         # Break the loop if the queue is empty
         except queue.Empty:
             break
+
+def check_flanking_indels( record, contig_vcf_reader):
+    for record2 in contig_vcf_reader.fetch(record.CHROM, record.POS-int(cfg['SMuRF']['indel_flank']), record.POS+int(cfg['SMuRF']['indel_flank'])):
+        if (len(record2.ALT[0]) > 1):
+            if (record2.CHROM == record.CHROM and record2.POS == record.POS):
+                continue
+            for call in (record2.samples):
+                sample = True
+                if call.sample in args.normal:
+                    sample = False
+                if not sample and (call['GT'] == '0/1' or call['GT'] == '1/1'):
+                    record.FILTER.append("FlankingControlEvidence")
+                    return( 1 )
+    return( 1 )
+
 
 def get_command_line():
     """
@@ -549,6 +569,7 @@ def calculate_vaf( record ):
     record_vaf = {}
     vaf_info = collections.defaultdict(lambda: collections.defaultdict(list))
     qc = collections.defaultdict(dict)
+    sample = "UNKNOWN"
 
     for call in (record.samples):
         # Add empty VAF and CAD tag to the record
@@ -562,6 +583,7 @@ def calculate_vaf( record ):
             sample_name = bam_sample_names[bam]
         dv = 0
         dr = 0
+        dx = 0
         vaf = 0.0
         # Loop through each reads that is overlapping the position of the variant
         for pileupcolumn in F.pileup(record.CHROM, int(record.POS)-1, int(record.POS), truncate=True, stepper='nofilter',min_base_quality=int(cfg['SMuRF']['base_phred_quality'])):
@@ -585,6 +607,8 @@ def calculate_vaf( record ):
                         # Read has no deletion
                         elif pileupread.indel == 0:
                             dr+=1
+                        else:
+                            dx+=1
                     # If variant is an insertion
                     elif ( len(record.REF) == 1 and len(alt) > 1 ):
                         # Read has the insertion
@@ -593,6 +617,8 @@ def calculate_vaf( record ):
                         # Read has no insertion
                         elif pileupread.indel == 0:
                             dr+=1
+                        else:
+                            dx+=1
                     # If variant is an INDEL
                     else:
                         # Read has the INDEL
@@ -601,6 +627,8 @@ def calculate_vaf( record ):
                         # Read has no INDEL
                         elif pileupread.indel == 0:
                             dr+=1
+                        else:
+                            dx+=1
         # Calculate the VAF
         try:
             vaf = float("{0:.2f}".format(dv/float(dv+dr)))
@@ -638,6 +666,8 @@ def calculate_vaf( record ):
     format_list.insert(0,'GT')
     # Add VAF information to the format field of each sample
     record.FORMAT = ":".join(format_list)
+    if not sample and dx > 0:
+        record.FILTER.append('OverlappingIndelInControl')
     # Add QC information to the INFO field
     if len(qc[False].keys()) > 0 and list(qc[False].values()).count('PASS') == 0:
         record.FILTER.append('AllControlsFailedQC')
