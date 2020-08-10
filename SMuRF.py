@@ -13,6 +13,9 @@ import subprocess
 import os
 import glob
 import pandas as pd
+#import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('pdf')
 import matplotlib.pyplot as plt
 import numpy as np
 import re
