@@ -143,7 +143,7 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
 
                     if "MQ" not in record.INFO:
                         record.FILTER.append("NoMQtag")
-                    if record.ID and "COSM" not in record.ID:
+                    elif record.ID and "COSM" not in record.ID:
                         record.FILTER.append('KnownVariant')
                     elif record.QUAL < int(cfg['SMuRF']['qual']):
                         record.FILTER.append('BadQual')
