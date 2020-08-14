@@ -5,6 +5,9 @@ import collections
 import argparse
 import multiprocessing as mp
 import queue
+#import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('pdf')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import pysam
