@@ -66,7 +66,7 @@ parser = argparse.ArgumentParser(description='Put here a description.')
 parser.add_argument('-i', '--input', type=str, help='Input indexed vcf.gz file', required=True)
 parser.add_argument('-c','--clonal', default=0.3,type=float,help='Clonal threshold (default: %(default)s)')
 parser.add_argument('-a','--absent', default=0,type=float,help='Clonal threshold (default: %(default)s)')
-parser.add_argument('-t','--threads', default=8,type=int,help='Number of threads')
+parser.add_argument('-t','--threads', default=8,type=int,help='Number of threads (default: %(default)s)')
 args = parser.parse_args()
 
 vcf_reader = pyvcf.Reader(filename=args.input, encoding='utf-8')
@@ -134,6 +134,7 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader):
                     # Flag variant if it is not found clonal in one of the samples
                     elif len(vaf_info[True]['CLONAL']) == 0:
                         record.FILTER.append('NoClonalSample')
+
                 contig_vcf_flag_writer.write_record(record)
             q_out.put( "Done" )
 
