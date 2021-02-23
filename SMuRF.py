@@ -178,7 +178,7 @@ def check_flanking_indels( record, contig_vcf_reader):
                 sample = True
                 if call.sample in args.normal:
                     sample = False
-                if not sample and (call['GT'] == '0/1' or call['GT'] == '1/1'):
+                if not sample and (call['GT'] == '0/1' or call['GT'] == '1/1' or call['GT'] == '0|1' or call['GT'] == '1|1'):
                     record.FILTER.append("FlankingControlEvidence")
                     return( 1 )
     return( 1 )
@@ -474,14 +474,14 @@ def sample_quality_control( record ):
         if call.sample in args.normal:
             sample = False
         # QC fails if there is no genotype
-        if call['GT'] == './.':
+        if call['GT'] == './.' or call['GT'] == '.|.':
             qc[sample][call.sample] = 'NoGenoType'
         # QC fails if the coverage is too low
         elif (call['DP'] == None or call['DP'] < int(cfg['SMuRF']['coverage'])):
             qc[sample][call.sample] = 'LowCov'
         elif sample:
             # If sample is homozygous reference
-            if call['GT'] == '0/0':
+            if call['GT'] == '0/0' or call['GT'] == '0|0':
                 noSampleEvidence += 1
                 if indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['indel_gq_homref'])):
                     qc[sample][call.sample] = 'LowGQ'
@@ -490,14 +490,14 @@ def sample_quality_control( record ):
                 else:
                     qc[sample][call.sample] = 'PASS'
             # Check QC for homozygous variant
-            elif call['GT'] == '1/1':
+            elif call['GT'] == '1/1' or call['GT'] == '1|1':
                 if indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['indel_gq_homozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
                 elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['sample_gq_homozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'PASS'
-            elif call['GT'] == '0/1':
+            elif call['GT'] == '0/1' or call['GT'] == '0|1':
                 if indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['indel_gq_heterozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
                 elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['sample_gq_heterozygous'])):
@@ -506,7 +506,7 @@ def sample_quality_control( record ):
                     qc[sample][call.sample] = 'PASS'
         else:
             # If variant is also found in a control
-            if call['GT'] == '0/1':
+            if call['GT'] == '0/1' or call['GT'] == '0|1':
                 controlEvidence = True
                 if indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['indel_gq_heterozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
@@ -514,7 +514,7 @@ def sample_quality_control( record ):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'isVariant'
-            elif call['GT'] == '1/1':
+            elif call['GT'] == '1/1' or call['GT'] == '1|1':
                 controlEvidence = True
                 if indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['indel_gq_homozygous'])):
                     qc[sample][call.sample] = 'LowGQ'
@@ -522,7 +522,7 @@ def sample_quality_control( record ):
                     qc[sample][call.sample] = 'LowGQ'
                 else:
                     qc[sample][call.sample] = 'isVariant'
-            elif call['GT'] == '0/0':
+            elif call['GT'] == '0/0' or call['GT'] == '0|0':
                 if indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['indel_gq_homref'])):
                     qc[sample][call.sample] = 'LowGQ'
                 elif not indel and (not call['GQ'] or call['GQ'] < int(cfg['SMuRF']['control_gq_homref'])):

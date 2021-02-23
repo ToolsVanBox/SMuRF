@@ -67,6 +67,7 @@ parser.add_argument('-i', '--input', type=str, help='Input indexed vcf.gz file',
 parser.add_argument('-c','--clonal', default=0.3,type=float,help='Clonal threshold (default: %(default)s)')
 parser.add_argument('-a','--absent', default=0,type=float,help='Clonal threshold (default: %(default)s)')
 parser.add_argument('-t','--threads', default=8,type=int,help='Number of threads (default: %(default)s)')
+parser.add_argument('-s','--sample',action='append',type=str,help='Reannotate sample')
 args = parser.parse_args()
 
 vcf_reader = pyvcf.Reader(filename=args.input, encoding='utf-8')
@@ -103,13 +104,30 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader):
                         sample = True
                         if call.sample in args.normal:
                             sample = False
-                        vaf = call['VAF']
-                        if vaf <= float(args.absent):
-                            vaf_info[sample]['ABSENT'].append(call.sample)
-                        elif vaf < float(args.clonal):
-                            vaf_info[sample]['SUBCLONAL'].append(call.sample)
+                        if call.sample in args.sample:
+                            vaf = call['VAF']
+                            if vaf is None:
+                                vaf = 0.0
+                            if vaf <= float(args.absent):
+                                vaf_info[sample]['ABSENT'].append(call.sample)
+                            elif vaf < float(args.clonal):
+                                vaf_info[sample]['SUBCLONAL'].append(call.sample)
+                            else:
+                                vaf_info[sample]['CLONAL'].append(call.sample)
                         else:
-                            vaf_info[sample]['CLONAL'].append(call.sample)
+                            if call.sample in record.INFO['ABSENT_SAMPLE_NAMES']:
+                                vaf_info[sample]['ABSENT'].append(call.sample)
+                            if call.sample in record.INFO['SUBCLONAL_SAMPLE_NAMES']:
+                                vaf_info[sample]['SUBCLONAL'].append(call.sample)
+                            if call.sample in record.INFO['CLONAL_SAMPLE_NAMES']:
+                                vaf_info[sample]['CLONAL'].append(call.sample)
+                            if call.sample in record.INFO['ABSENT_CONTROL_NAMES']:
+                                vaf_info[sample]['ABSENT'].append(call.sample)
+                            if call.sample in record.INFO['SUBCLONAL_CONTROL_NAMES']:
+                                vaf_info[sample]['SUBCLONAL'].append(call.sample)
+                            if call.sample in record.INFO['CLONAL_CONTROL_NAMES']:
+                                vaf_info[sample]['CLONAL'].append(call.sample)
+                                
                     # Add clonal information to the INFO field
                     record.INFO['ABSENT_SAMPLES'] = len(vaf_info[True]['ABSENT'])
                     record.INFO['SUBCLONAL_SAMPLES'] = len(vaf_info[True]['SUBCLONAL'])
