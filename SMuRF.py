@@ -13,6 +13,7 @@ import subprocess
 import os
 import glob
 import pandas as pd
+from pathlib import Path
 #import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('pdf')
@@ -26,15 +27,19 @@ import configparser
 
 # Get version from git
 #__version__ = subprocess.check_output(["git", "describe"]).strip().decode('UTF-8')
-__version__ = 'v2.1.1'
+__version__ = 'v3.0.0'
 
 # Set arguments
+_DEFAULT_GENDER=['female']
 parser = argparse.ArgumentParser()
 parser = argparse.ArgumentParser(description='Put here a description.')
 parser.add_argument('-i', '--input', type=str, help='Input indexed vcf.gz file', required=True)
 parser.add_argument('-b', '--bam', action='append', nargs="*", type=str, help='Input bam file', required=True)
 parser.add_argument('-n', '--normal', action='append', type=str, help='Normal sample name')
-parser.add_argument('-c','--config', default=os.path.dirname(os.path.abspath(__file__))+"/config.ini",type=str,help='Give the full path to your own ini file (default: %(default)s)')
+parser.add_argument('-m', '--mode', default='normal', type=str, help='Run mode [normal, nonormal] (default: %(default)s)')
+parser.add_argument('-g', '--gender', action='append', type=str, help='Gender [male, female], one per sample (in order of the vcf samples) or one for all samples (default: %s' % (_DEFAULT_GENDER))
+parser.add_argument('-f', '--bedfile', action='append', type=str, help='Bed file with copy number per region, one per sample (in order of the vcf samples) or one for all samples, this will overrule the gender argument (eg. <samplename>.bed)')
+parser.add_argument('-c', '--config', default=os.path.dirname(os.path.abspath(__file__))+"/config.ini",type=str,help='Give the full path to your own ini file (default: %(default)s)')
 parser.add_argument('-v', '--version', action='version', version=__version__)
 args = parser.parse_args()
 
@@ -43,6 +48,8 @@ args.bam = [x for l in args.bam for x in l]
 # Set default control None if no control is given at the command line
 if not args.normal:
     args.normal = [ None ]
+if not args.gender:
+    args.gender = _DEFAULT_GENDER
 
 cfg = configparser.ConfigParser()
 if not os.path.exists(args.config):
@@ -61,7 +68,7 @@ with open('SMuRF_config.ini', 'w') as configfile:
 vcf_reader = pyvcf.Reader(filename=args.input, encoding='utf-8')
 vcf_name = os.path.basename(args.input)
 vcf_name = vcf_name.replace(".vcf.gz","")
-
+samples = vcf_reader.samples
 # Create tmp directory if it does not exists
 try:
     os.stat('./SMuRF_tmp')
@@ -72,6 +79,7 @@ except:
 vaf_dict = collections.defaultdict(list)
 responsibilities_dict = collections.defaultdict(dict)
 contig_list = []
+cn_regions = collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(list)))
 bam_sample_names = collections.defaultdict(dict)
 
 def main():
@@ -82,7 +90,14 @@ def main():
     blacklist = create_blacklist()
 
     for contig in vcf_reader.contigs:
-        contig_list.append(contig)
+        if contig == '21' or contig == '22':
+            contig_length = vcf_reader.contigs[contig][1]
+            bin_start = 1
+            bin_end = bin_start+int(cfg['SMuRF']['binsize'])-1
+            while( bin_end < contig_length ):
+                contig_list.append(contig+"_"+str(bin_start)+"_"+str(bin_end))
+                bin_start = bin_end+1
+                bin_end = bin_start+int(cfg['SMuRF']['binsize'])-1
 
     # Create an input queue with the contigs and an empty output queue
     q = mp.Queue()
@@ -126,16 +141,19 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
         try:
             # Get contig one by one from the queue
             contig = q.get(block=False,timeout=1)
+            contig_chr, contig_start, contig_end = contig.split("_")
+            contig_start = int(contig_start)
+            contig_end = int(contig_end)
             contig_vaf = collections.defaultdict(list)
             contig_vcf_flag_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_SMuRF.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
             try:
                 # Try to parse the specific contig from the vcf
-                contig_vcf_reader.fetch(contig)
+                contig_vcf_reader.fetch(contig_chr, contig_start, contig_end)
             except:
                 # Skip contig if it is not present in the vcf file
                 continue
-            # print( "blacklist", blacklist )
-            for record in contig_vcf_reader.fetch(contig):
+
+            for record in contig_vcf_reader.fetch(contig_chr, contig_start, contig_end):
                 if not record.FILTER:
                     chr = record.CHROM
                     chr = chr.lower()
@@ -224,6 +242,7 @@ def add_vcf_header( vcf_reader ):
     # Formats
     vcf_reader.formats['VAF'] = pyvcf.parser._Format('VAF',None,'Float','Variant Allele Frequency calculated from the BAM file')
     vcf_reader.formats['CAD'] = pyvcf.parser._Format('CAD',None,'Integer','Calculated Allelic Depth, used for VAF calculation')
+    vcf_reader.formats['CN'] = pyvcf.parser._Format('CN',None,'Integer','Copy number')
     vcf_reader.formats['FT'] = pyvcf.parser._Format('FT',None,'String','Sample filter')
 
     # Filters
@@ -240,6 +259,7 @@ def add_vcf_header( vcf_reader ):
     vcf_reader.filters['ControlSubclonal'] = pyvcf.parser._Filter('ControlSubclonal', 'Variant is found as subclonal in a control based on the recalculated VAF')
     vcf_reader.filters['ControlClonal'] = pyvcf.parser._Filter('ControlClonal', 'Variant is found as clonal in a control based on the recalculated VAF')
     vcf_reader.filters['NoClonalSample'] = pyvcf.parser._Filter('NoClonalSample', 'Variant is not found as clonal in any of the samples based on the recalculated VAF')
+    vcf_reader.filters['AllSamplesClonal'] = pyvcf.parser._Filter('AllSamplesClonal', 'Variant is found as clonal in all of the samples based on the recalculated VAF')
     # Sample filters
     vcf_reader.filters['LowCov'] = pyvcf.parser._Filter('LowCov', 'Variant has a coverage <'+str(cfg['SMuRF']['coverage'])+' in this sample/control')
     vcf_reader.filters['NoGenoType'] = pyvcf.parser._Filter('NoGenoType', 'Genotype is empty for this sample/control')
@@ -573,10 +593,14 @@ def calculate_vaf( record ):
     vaf_info = collections.defaultdict(lambda: collections.defaultdict(list))
     qc = collections.defaultdict(dict)
     sample = "UNKNOWN"
+    indel = False
 
+    # Check if variant is an indel
+    if (len(record.REF) > 1 or len(record.ALT[0]) > 1):
+        indel = True
     for call in (record.samples):
         # Add empty VAF and CAD tag to the record
-        update_call_data(call, ['VAF','CAD'], [None, None], vcf_reader)
+        update_call_data(call, ['VAF','CAD','CN'], [None, None, None], vcf_reader)
     for bam in args.bam:
         F=pysam.AlignmentFile(bam,'rb')
         if bam not in bam_sample_names:
@@ -644,9 +668,14 @@ def calculate_vaf( record ):
                 sample = False
             # Check if the sample name in the vcf file is the same as a sample name in the bam file
             if call.sample == sample_name:
+                cn = get_copy_number( call.sample, record.CHROM, record.POS )
                 # Add the VAF and sample name to the output tuple
-                if vaf > float(cfg['SMuRF']['absent_threshold']) and call.sample not in args.normal:
-                    record_vaf[call.sample] = vaf
+                if indel:
+                    if vaf > float(cfg['indel_absent_threshold'][str(cn)]) and call.sample not in args.normal:
+                        record_vaf[call.sample] = vaf
+                else:
+                    if vaf > float(cfg['absent_threshold'][str(cn)]) and call.sample not in args.normal:
+                        record_vaf[call.sample] = vaf
                 # Update the format field for this sample
                 ft = call['FT']
                 if float(dv+dr) < int(cfg['SMuRF']['coverage']):
@@ -654,15 +683,24 @@ def calculate_vaf( record ):
             	     qc[sample][call.sample] = 'LowCov'
                 else:
                     qc[sample][call.sample] = call['FT']
-                update_call_data(call, ['VAF','CAD','FT'], [vaf, [dr, dv], ft], vcf_reader)
 
+                update_call_data(call, ['VAF','CAD','CN','FT'], [vaf, [dr, dv], cn, ft], vcf_reader)
                 # Set absent, subclonal or clonal based on the VAF and threshold
-                if vaf <= float(cfg['SMuRF']['absent_threshold']):
-                    vaf_info[sample]['ABSENT'].append(call.sample)
-                elif vaf < float(cfg['SMuRF']['clonal_threshold']):
-                    vaf_info[sample]['SUBCLONAL'].append(call.sample)
+                if indel:
+                    if vaf <= float(cfg['indel_absent_threshold'][str(cn)]):
+                        vaf_info[sample]['ABSENT'].append(call.sample)
+                    elif vaf < float(cfg['indel_clonal_threshold'][str(cn)]):
+                        vaf_info[sample]['SUBCLONAL'].append(call.sample)
+                    else:
+                        vaf_info[sample]['CLONAL'].append(call.sample)
+
                 else:
-                    vaf_info[sample]['CLONAL'].append(call.sample)
+                    if vaf <= float(cfg['absent_threshold'][str(cn)]):
+                        vaf_info[sample]['ABSENT'].append(call.sample)
+                    elif vaf < float(cfg['clonal_threshold'][str(cn)]):
+                        vaf_info[sample]['SUBCLONAL'].append(call.sample)
+                    else:
+                        vaf_info[sample]['CLONAL'].append(call.sample)
 
     format_list = list(vcf_reader.formats.keys())
     format_list.remove('GT')
@@ -713,8 +751,27 @@ def calculate_vaf( record ):
         # Flag variant if it is not found clonal in one of the samples
         elif len(vaf_info[True]['CLONAL']) == 0:
             record.FILTER.append('NoClonalSample')
+        elif len(vaf_info[True]['SUBCLONAL']) == 0 and len(vaf_info[True]['ABSENT']) == 0 and args.mode == 'nonormal':
+            record.FILTER.append('AllSamplesClonal')
 
     return( record_vaf )
+
+def get_copy_number( sample, chrom, pos ):
+    """
+    Function to get the copy number of the specific Variant
+    Input: Chromosome
+    Input: Genomic position
+    Return: Copy number
+    """
+    cn = 2
+    if sample in cn_regions and chrom in cn_regions[sample]:
+        i = 0
+        for range in cn_regions[sample][chrom]['range']:
+            if pos in range:
+                cn = cn_regions[sample][chrom]['cn'][i]
+                break
+            i = i + 1
+    return( cn )
 
 def create_blacklist():
     """
@@ -785,10 +842,46 @@ def add_responsibilities():
         vcf_writer.write_record(record)
     # os.system("rm -rf SMuRF_tmp/*")
     time.sleep(5)
-    os.system("rm -rf SMuRF_tmp")
+    #os.system("rm -rf SMuRF_tmp")
+
+def create_cn_regions():
+    if args.bedfile:
+        if len(args.bedfile) == 1:
+            with(open(args.bedfile[0],'r')) as b:
+                for line in b:
+                    line = line.rstrip()
+                    chrom, start, end, cn = line.split("\t")
+                    for sample in samples:
+                        cn_regions[sample][chrom]['range'].append(range(int(start)+1,int(end)+1))
+                        cn_regions[sample][chrom]['cn'].append(int(cn))
+        else:
+            s = 0
+            for bed in args.bedfile:
+                with(open(bed,'r')) as b:
+                    for line in b:
+                        line = line.rstrip()
+                        chrom, start, end, cn = line.split("\t")
+                        sample = samples[s]
+                        cn_regions[sample][chrom]['range'].append(range(int(start)+1,int(end)+1))
+                        cn_regions[sample][chrom]['cn'].append(int(cn))
+                s = s + 1
+    else:
+        if len(args.gender) == 1:
+            if args.gender[0] == 'male':
+                for sample in samples:
+                    cn_regions[sample]['X']['range'].append(range(int(1),vcf_reader.contigs['X'][1]))
+                    cn_regions[sample]['X']['cn'].append(1)
+        else:
+            s = 0
+            for gender in args.gender:
+                if gender == 'male':
+                    sample = samples[s]
+                    cn_regions[sample]['X']['range'].append(range(int(1),vcf_reader.contigs['X'][1]))
+                    cn_regions[sample]['X']['cn'].append(1)
+                s = s + 1
 
 if __name__ == "__main__":
-    #get_command_line()
+    create_cn_regions()
     main()
     create_vaf_plot()
     merge_tmp_vcfs()
