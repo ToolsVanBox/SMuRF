@@ -27,7 +27,7 @@ import configparser
 
 # Get version from git
 #__version__ = subprocess.check_output(["git", "describe"]).strip().decode('UTF-8')
-__version__ = 'v3.0.0'
+__version__ = 'v3.0.2'
 
 # Set arguments
 _DEFAULT_GENDER=['female']
@@ -90,14 +90,16 @@ def main():
     blacklist = create_blacklist()
 
     for contig in vcf_reader.contigs:
-        if contig == '21' or contig == '22':
-            contig_length = vcf_reader.contigs[contig][1]
-            bin_start = 1
+        contig_length = vcf_reader.contigs[contig][1]
+        bin_start = 1
+        bin_end = 1
+        while( bin_end < contig_length ):
             bin_end = bin_start+int(cfg['SMuRF']['binsize'])-1
-            while( bin_end < contig_length ):
-                contig_list.append(contig+"_"+str(bin_start)+"_"+str(bin_end))
-                bin_start = bin_end+1
-                bin_end = bin_start+int(cfg['SMuRF']['binsize'])-1
+            if bin_end > contig_length:
+                bin_end = contig_length
+            print( contig, bin_start, bin_end)
+            contig_list.append(contig+"-"+str(bin_start)+"-"+str(bin_end))
+            bin_start = bin_end+1
 
     # Create an input queue with the contigs and an empty output queue
     q = mp.Queue()
@@ -141,7 +143,8 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
         try:
             # Get contig one by one from the queue
             contig = q.get(block=False,timeout=1)
-            contig_chr, contig_start, contig_end = contig.split("_")
+            print( "CONTIG", contig )
+            contig_chr, contig_start, contig_end = contig.split("-")
             contig_start = int(contig_start)
             contig_end = int(contig_end)
             contig_vaf = collections.defaultdict(list)
