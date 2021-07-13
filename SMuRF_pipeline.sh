@@ -178,7 +178,7 @@ if [ ! -d $OUTDIR ]; then
 fi
 
 
-THREADS=`grep "SMuRF" -A 19 /hpc/pmc_vanboxtel/tools/SMuRF/config.ini | grep -m 1 threads | cut -f 3 -d ' '`
+THREADS=`grep "SMuRF" -A 19 ${CONFIG} | grep -m 1 threads | cut -f 3 -d ' '`
 
 cat << EOF > $SMURF_SH
 #!/bin/bash
