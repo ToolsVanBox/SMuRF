@@ -26,7 +26,7 @@ import configparser
 
 # Get version from git
 #__version__ = subprocess.check_output(["git", "describe"]).strip().decode('UTF-8')
-__version__ = 'v2.1.2'
+__version__ = 'v2.1.3'
 
 # Set arguments
 parser = argparse.ArgumentParser()
@@ -772,7 +772,7 @@ def add_responsibilities():
         for call in (record.samples):
             vaf = call['VAF']
             sample = call.sample
-            if vaf != None and vaf > 0.0:
+            if vaf != None and vaf > float(cfg['SMuRF']['absent_threshold']):
                 vaf = '{0:.2f}'.format(vaf)
                 update_call_data(call, ['PC'], [responsibilities_dict[sample][str(vaf)]], vcf_reader)
             else:
