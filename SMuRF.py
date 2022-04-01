@@ -26,7 +26,7 @@ import configparser
 
 # Get version from git
 #__version__ = subprocess.check_output(["git", "describe"]).strip().decode('UTF-8')
-__version__ = 'v2.1.3'
+__version__ = 'v2.1.4'
 
 # Set arguments
 parser = argparse.ArgumentParser()
@@ -34,6 +34,7 @@ parser = argparse.ArgumentParser(description='Put here a description.')
 parser.add_argument('-i', '--input', type=str, help='Input indexed vcf.gz file', required=True)
 parser.add_argument('-b', '--bam', action='append', nargs="*", type=str, help='Input bam file', required=True)
 parser.add_argument('-n', '--normal', action='append', type=str, help='Normal sample name')
+parser.add_argument('-t', '--threads', type=int, help='Number of threads',default=8, required=False)
 parser.add_argument('-c','--config', default=os.path.dirname(os.path.abspath(__file__))+"/config.ini",type=str,help='Give the full path to your own ini file (default: %(default)s)')
 parser.add_argument('-v', '--version', action='version', version=__version__)
 args = parser.parse_args()
@@ -71,7 +72,7 @@ except:
 # Define global variables
 vaf_dict = collections.defaultdict(list)
 responsibilities_dict = collections.defaultdict(dict)
-contig_list = []
+contig_dict = {}
 bam_sample_names = collections.defaultdict(dict)
 
 def main():
@@ -82,7 +83,9 @@ def main():
     blacklist = create_blacklist()
 
     for contig in vcf_reader.contigs:
-        contig_list.append(contig)
+        contig_dict[contig] = vcf_reader.contigs[contig][1]
+
+    contig_list = dict(sorted(contig_dict.items(), key=lambda contig_dict: contig_dict[1], reverse=True)).keys()
 
     # Create an input queue with the contigs and an empty output queue
     q = mp.Queue()
@@ -91,7 +94,7 @@ def main():
         q.put(contig)
 
     # Create number of processes to parse the vcf file
-    processes = [mp.Process(target=parse_chr_vcf, args=(q, q_out, vcf_reader, args.bam)) for x in range(int(cfg['SMuRF']['threads']))]
+    processes = [mp.Process(target=parse_chr_vcf, args=(q, q_out, vcf_reader, args.bam)) for x in range(int(args.threads))]
 
     for p in processes:
         p.start()
@@ -754,7 +757,7 @@ def merge_tmp_vcfs():
     start = time.time()
     header = False
     # Loop through all chromomsomes
-    for contig in contig_list:
+    for contig in contig_dict.keys():
         if not header:
             os.system('cat SMuRF_tmp/{}_SMuRF.vcf > {}_SMuRF.vcf'.format(contig, vcf_name))
             header = True
@@ -784,7 +787,7 @@ def add_responsibilities():
         record.FORMAT = ":".join(format_list)
         vcf_writer.write_record(record)
     # os.system("rm -rf SMuRF_tmp/*")
-    time.sleep(5)
+    time.sleep(10)
     os.system("rm -rf SMuRF_tmp")
 
 if __name__ == "__main__":
