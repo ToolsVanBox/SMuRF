@@ -26,7 +26,7 @@ import configparser
 
 # Get version from git
 #__version__ = subprocess.check_output(["git", "describe"]).strip().decode('UTF-8')
-__version__ = 'v2.1.4'
+__version__ = 'v2.1.5'
 
 # Set arguments
 parser = argparse.ArgumentParser()
@@ -130,7 +130,7 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
             # Get contig one by one from the queue
             contig = q.get(block=False,timeout=1)
             contig_vaf = collections.defaultdict(list)
-            contig_vcf_flag_writer = pyvcf.Writer(open('./SMuRF_tmp/{}_SMuRF.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
+            contig_vcf_flag_writer = pyvcf.Writer(open('./SMuRF_tmp/{}.SMuRF.vcf'.format(contig),'w', encoding='utf-8'), contig_vcf_reader)
             try:
                 # Try to parse the specific contig from the vcf
                 contig_vcf_reader.fetch(contig)
@@ -403,8 +403,10 @@ def create_vaf_plot():
     Function to plot the VAF values
     """
     # Open a multipage pdf file
-    with PdfPages(vcf_name+'_SMuRF_VAFplot.pdf') as pdf:
+    with PdfPages(vcf_name+'.SMuRF.vafplot.pdf') as pdf:
         for sample in vaf_dict:
+            if ( len(vaf_dict[sample]) <= 1):
+                continue
             plt.figure(figsize=(30,10))
 
             x, p, p_individual, means, std_devs, respons = gmm( vaf_dict[sample] )
@@ -759,23 +761,23 @@ def merge_tmp_vcfs():
     # Loop through all chromomsomes
     for contig in contig_dict.keys():
         if not header:
-            os.system('cat SMuRF_tmp/{}_SMuRF.vcf > {}_SMuRF.vcf'.format(contig, vcf_name))
+            os.system('cat SMuRF_tmp/{}.SMuRF.vcf > {}.SMuRF.vcf'.format(contig, vcf_name))
             header = True
         else:
-            os.system('grep -v \'^#\' SMuRF_tmp/{}_SMuRF.vcf >> {}_SMuRF.vcf'.format(contig, vcf_name))
-    os.system("grep -P '^#|\s+PASS\s+' "+vcf_name+"_SMuRF.vcf > SMuRF_tmp/filter.vcf")
+            os.system('grep -v \'^#\' SMuRF_tmp/{}.SMuRF.vcf >> {}.SMuRF.vcf'.format(contig, vcf_name))
+    os.system("grep -P '^#|\s+PASS\s+' "+vcf_name+".SMuRF.vcf > SMuRF_tmp/filter.vcf")
 
 def add_responsibilities():
     vcf_reader = pyvcf.Reader(filename="SMuRF_tmp/filter.vcf", encoding='utf-8')
     vcf_reader.formats['PC'] = pyvcf.parser._Format('PC',None,'Float','Probability of each component')
 
-    vcf_writer =  pyvcf.Writer(open(vcf_name+'_SMuRF_filtered.vcf','w', encoding='utf-8'), vcf_reader)
+    vcf_writer =  pyvcf.Writer(open(vcf_name+'.SMuRF.filtered.vcf','w', encoding='utf-8'), vcf_reader)
 
     for record in vcf_reader:
         for call in (record.samples):
             vaf = call['VAF']
             sample = call.sample
-            if vaf != None and vaf > float(cfg['SMuRF']['absent_threshold']):
+            if vaf != None and vaf > float(cfg['SMuRF']['absent_threshold']) and vaf in responsibilities_dict[sample]:
                 vaf = '{0:.2f}'.format(vaf)
                 update_call_data(call, ['PC'], [responsibilities_dict[sample][str(vaf)]], vcf_reader)
             else:
