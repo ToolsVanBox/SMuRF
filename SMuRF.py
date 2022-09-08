@@ -26,7 +26,7 @@ import configparser
 
 # Get version from git
 #__version__ = subprocess.check_output(["git", "describe"]).strip().decode('UTF-8')
-__version__ = 'v2.1.5'
+__version__ = 'v3.0.0'
 
 # Set arguments
 parser = argparse.ArgumentParser()
@@ -146,10 +146,23 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
 
 #                    if (len(record.ALT[0]) > 1):
 #                        check_flanking_indels(record, contig_vcf_reader)
+                    if 'known_variant_flag_ids' in cfg['SMuRF'] and 'known_variant_flag_values' in cfg['SMuRF']:
+                        flag_ids = cfg['SMuRF']['known_variant_flag_ids'].split(" ")
+                        flag_values = cfg['SMuRF']['known_variant_flag_values'].split(" ")
+                        next = False
+                        for i in range(0, len(flag_ids)):
+                            flag_id = flag_ids[i]
+                            flag_value = flag_values[i]
+                            if flag_id in record.INFO and record.INFO[flag_id] > flag_value:
+                                record.FILTER.append("KnownVariant")
+                                next = True
+                                break
+                        if next:
+                            continue
 
                     if "MQ" not in record.INFO:
                         record.FILTER.append("NoMQtag")
-                    elif record.ID and "COSM" not in record.ID:
+                    elif record.ID and "COSM" not in record.ID and cfg['SMuRF']['known_variant_flag_ids'] == '':
                         record.FILTER.append('KnownVariant')
                     elif record.QUAL < int(cfg['SMuRF']['qual']):
                         record.FILTER.append('BadQual')
