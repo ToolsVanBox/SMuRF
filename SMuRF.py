@@ -22,11 +22,11 @@ import re
 from sklearn.mixture import GaussianMixture
 from matplotlib.backends.backend_pdf import PdfPages
 import warnings
-import configparser
+from configparser import SafeConfigParser
 
 # Get version from git
 #__version__ = subprocess.check_output(["git", "describe"]).strip().decode('UTF-8')
-__version__ = 'v3.0.0'
+__version__ = 'v3.0.1'
 
 # Set arguments
 parser = argparse.ArgumentParser()
@@ -45,7 +45,8 @@ args.bam = [x for l in args.bam for x in l]
 if not args.normal:
     args.normal = [ None ]
 
-cfg = configparser.ConfigParser()
+# cfg = configparser.ConfigParser()
+cfg = SafeConfigParser(os.environ)
 if not os.path.exists(args.config):
     sys.stderr.write("Config file "+args.config+" does not exists\n")
     sys.exit()
