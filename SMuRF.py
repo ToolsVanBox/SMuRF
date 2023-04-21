@@ -140,6 +140,8 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
                 continue
             # print( "blacklist", blacklist )
             for record in contig_vcf_reader.fetch(contig):
+                if type(record.FILTER) != list:
+                    record.FILTER = []
                 if not record.FILTER:
                     chr = record.CHROM
                     chr = chr.lower()
