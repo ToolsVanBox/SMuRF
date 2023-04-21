@@ -26,7 +26,7 @@ from configparser import SafeConfigParser
 
 # Get version from git
 #__version__ = subprocess.check_output(["git", "describe"]).strip().decode('UTF-8')
-__version__ = 'v3.0.1'
+__version__ = 'v3.0.2'
 
 # Set arguments
 parser = argparse.ArgumentParser()
