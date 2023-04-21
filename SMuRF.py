@@ -26,7 +26,7 @@ from configparser import SafeConfigParser
 
 # Get version from git
 #__version__ = subprocess.check_output(["git", "describe"]).strip().decode('UTF-8')
-__version__ = 'v3.0.1'
+__version__ = 'v3.0.2'
 
 # Set arguments
 parser = argparse.ArgumentParser()
@@ -140,6 +140,8 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
                 continue
             # print( "blacklist", blacklist )
             for record in contig_vcf_reader.fetch(contig):
+                if type(record.FILTER) != list:
+                    record.FILTER = []
                 if not record.FILTER:
                     chr = record.CHROM
                     chr = chr.lower()
