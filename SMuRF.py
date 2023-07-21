@@ -33,6 +33,7 @@ parser = argparse.ArgumentParser()
 parser = argparse.ArgumentParser(description='Put here a description.')
 parser.add_argument('-i', '--input', type=str, help='Input indexed vcf.gz file', required=True)
 parser.add_argument('-b', '--bam', action='append', nargs="*", type=str, help='Input bam file', required=True)
+parser.add_argument('-r', '--run_contigs', type=str, help='File with contigs to run')
 parser.add_argument('-n', '--normal', action='append', type=str, help='Normal sample name')
 parser.add_argument('-t', '--threads', type=int, help='Number of threads',default=8, required=False)
 parser.add_argument('-c','--config', default=os.path.dirname(os.path.abspath(__file__))+"/config.ini",type=str,help='Give the full path to your own ini file (default: %(default)s)')
@@ -76,6 +77,9 @@ responsibilities_dict = collections.defaultdict(dict)
 contig_dict = {}
 bam_sample_names = collections.defaultdict(dict)
 
+with open(args.run_contigs) as f:
+    run_contigs = f.read().splitlines()
+
 def main():
     global vcf_reader, vaf_df, blacklist
     vcf_reader = fix_vcf_header(vcf_reader)
@@ -92,7 +96,8 @@ def main():
     q = mp.Queue()
     q_out = mp.Queue()
     for contig in contig_list:
-        q.put(contig)
+        if contig in run_contigs:
+            q.put(contig)
 
     # Create number of processes to parse the vcf file
     processes = [mp.Process(target=parse_chr_vcf, args=(q, q_out, vcf_reader, args.bam)) for x in range(int(args.threads))]
@@ -776,6 +781,8 @@ def merge_tmp_vcfs():
     header = False
     # Loop through all chromomsomes
     for contig in contig_dict.keys():
+        if not os.path.exists('SMuRF_tmp/{}.SMuRF.vcf'.format(contig)):
+            continue
         if not header:
             os.system('cat SMuRF_tmp/{}.SMuRF.vcf > {}.SMuRF.vcf'.format(contig, vcf_name))
             header = True
