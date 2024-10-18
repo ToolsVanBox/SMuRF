@@ -259,6 +259,10 @@ def add_vcf_header( vcf_reader ):
     vcf_reader.filters['ControlSubclonal'] = pyvcf.parser._Filter('ControlSubclonal', 'Variant is found as subclonal in a control based on the recalculated VAF')
     vcf_reader.filters['ControlClonal'] = pyvcf.parser._Filter('ControlClonal', 'Variant is found as clonal in a control based on the recalculated VAF')
     vcf_reader.filters['NoClonalSample'] = pyvcf.parser._Filter('NoClonalSample', 'Variant is not found as clonal in any of the samples based on the recalculated VAF')
+    vcf_reader.filters['OverlappingIndelInControl'] = pyvcf.parser._Filter('OverlappingIndelInControl', 'Overlapping indel found in control')
+    vcf_reader.filters['NoMQtag'] = pyvcf.parser._Filter('NoMQtag', 'No MQ tag found in info field')
+    vcf_reader.filters['FlankingControlEvidence'] = pyvcf.parser._Filter('FlankingControlEvidence', 'Flanking indel found in control')
+
     # Sample filters
     vcf_reader.filters['LowCov'] = pyvcf.parser._Filter('LowCov', 'Variant has a coverage <'+str(cfg['SMuRF']['coverage'])+' in this sample/control')
     vcf_reader.filters['NoGenoType'] = pyvcf.parser._Filter('NoGenoType', 'Genotype is empty for this sample/control')
