@@ -140,30 +140,36 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
                 continue
             # print( "blacklist", blacklist )
             for record in contig_vcf_reader.fetch(contig):
+                known = False
                 if type(record.FILTER) != list:
                     record.FILTER = []
                 if not record.FILTER:
                     chr = record.CHROM
                     chr = chr.lower()
                     chr = re.sub("chr|chrom", "", chr)
-
+             
 #                    if (len(record.ALT[0]) > 1):
 #                        check_flanking_indels(record, contig_vcf_reader)
                     if 'known_variant_flag_ids' in cfg['SMuRF'] and 'known_variant_flag_values' in cfg['SMuRF']:
                         flag_ids = cfg['SMuRF']['known_variant_flag_ids'].split(" ")
                         flag_values = cfg['SMuRF']['known_variant_flag_values'].split(" ")
-                        next = False
+                        if 'CSQ' in record.INFO:
+                            if check_VEP_CSQ(contig_vcf_reader, flag_ids, flag_values, record):
+ #                               record.FILTER.append("KnownVariant")
+                                known = True
+                                                    
                         for i in range(0, len(flag_ids)):
                             flag_id = flag_ids[i]
-                            flag_value = flag_values[i]
-                            if flag_id in record.INFO and record.INFO[flag_id] > flag_value:
-                                record.FILTER.append("KnownVariant")
-                                next = True
+                            flag_value = float(flag_values[i])
+                            if flag_id in record.INFO and record.INFO[flag_id][0] > flag_value:
+#                                record.FILTER.append("KnownVariant")
+                                known = True
                                 break
-                        if next:
-                            continue
-
-                    if "MQ" not in record.INFO:
+ #                       if next:
+#                            continue
+                    if known:
+                        record.FILTER.append("KnownVariant")
+                    elif "MQ" not in record.INFO:
                         record.FILTER.append("NoMQtag")
                     elif record.ID and "COSM" not in record.ID and cfg['SMuRF']['known_variant_flag_ids'] == '':
                         record.FILTER.append('KnownVariant')
@@ -187,6 +193,21 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
         # Break the loop if the queue is empty
         except queue.Empty:
             break
+
+def check_VEP_CSQ( tmp_reader, f_ids, f_values, record):
+    description = tmp_reader.infos['CSQ'][3].split("|")
+    f_idx = [None] * len(f_ids)
+    for i in range(0, len(f_ids)):
+        if f_ids[i] in description:
+            f_idx[i] = description.index( f_ids[i] )
+    
+    csq = record.INFO['CSQ'][0].split("|")
+    for i in range(0, len(f_values)):
+        if f_idx[i]:
+            if csq[f_idx[i]] and float(csq[f_idx[i]]) > float(f_values[i]):
+                return( True )
+
+    return( False )
 
 def check_flanking_indels( record, contig_vcf_reader):
     for record2 in contig_vcf_reader.fetch(record.CHROM, record.POS-int(cfg['SMuRF']['indel_flank']), record.POS+int(cfg['SMuRF']['indel_flank'])):
@@ -259,6 +280,10 @@ def add_vcf_header( vcf_reader ):
     vcf_reader.filters['ControlSubclonal'] = pyvcf.parser._Filter('ControlSubclonal', 'Variant is found as subclonal in a control based on the recalculated VAF')
     vcf_reader.filters['ControlClonal'] = pyvcf.parser._Filter('ControlClonal', 'Variant is found as clonal in a control based on the recalculated VAF')
     vcf_reader.filters['NoClonalSample'] = pyvcf.parser._Filter('NoClonalSample', 'Variant is not found as clonal in any of the samples based on the recalculated VAF')
+    vcf_reader.filters['OverlappingIndelInControl'] = pyvcf.parser._Filter('OverlappingIndelInControl', 'Overlapping indel found in control')
+    vcf_reader.filters['NoMQtag'] = pyvcf.parser._Filter('NoMQtag', 'No MQ tag found in info field')
+    vcf_reader.filters['FlankingControlEvidence'] = pyvcf.parser._Filter('FlankingControlEvidence', 'Flanking indel found in control')
+
     # Sample filters
     vcf_reader.filters['LowCov'] = pyvcf.parser._Filter('LowCov', 'Variant has a coverage <'+str(cfg['SMuRF']['coverage'])+' in this sample/control')
     vcf_reader.filters['NoGenoType'] = pyvcf.parser._Filter('NoGenoType', 'Genotype is empty for this sample/control')
@@ -776,6 +801,8 @@ def merge_tmp_vcfs():
     header = False
     # Loop through all chromomsomes
     for contig in contig_dict.keys():
+        if not os.path.exists('SMuRF_tmp/{}.SMuRF.vcf'.format(contig)):
+            continue
         if not header:
             os.system('cat SMuRF_tmp/{}.SMuRF.vcf > {}.SMuRF.vcf'.format(contig, vcf_name))
             header = True
@@ -784,26 +811,28 @@ def merge_tmp_vcfs():
     os.system("grep -P '^#|\s+PASS\s+' "+vcf_name+".SMuRF.vcf > SMuRF_tmp/filter.vcf")
 
 def add_responsibilities():
-    vcf_reader = pyvcf.Reader(filename="SMuRF_tmp/filter.vcf", encoding='utf-8')
-    vcf_reader.formats['PC'] = pyvcf.parser._Format('PC',None,'Float','Probability of each component')
+    with open('SMuRF_tmp/filter.vcf', 'r', encoding='utf-8') as vcf_file:
+        vcf_reader = pyvcf.Reader(vcf_file)
+    #vcf_reader = pyvcf.Reader(filename="SMuRF_tmp/filter.vcf", encoding='utf-8')
+        vcf_reader.formats['PC'] = pyvcf.parser._Format('PC',None,'Float','Probability of each component')
 
-    vcf_writer =  pyvcf.Writer(open(vcf_name+'.SMuRF.filtered.vcf','w', encoding='utf-8'), vcf_reader)
+        vcf_writer =  pyvcf.Writer(open(vcf_name+'.SMuRF.filtered.vcf','w', encoding='utf-8'), vcf_reader)
 
-    for record in vcf_reader:
-        for call in (record.samples):
-            vaf = call['VAF']
-            sample = call.sample
-            if vaf != None and vaf > float(cfg['SMuRF']['absent_threshold']) and vaf in responsibilities_dict[sample]:
-                vaf = '{0:.2f}'.format(vaf)
-                update_call_data(call, ['PC'], [responsibilities_dict[sample][str(vaf)]], vcf_reader)
-            else:
-                update_call_data(call, ['PC'], [None], vcf_reader)
-        format_list = list(vcf_reader.formats.keys())
-        format_list.remove('GT')
-        format_list.insert(0,'GT')
-        # Add VAF information to the format field of each sample
-        record.FORMAT = ":".join(format_list)
-        vcf_writer.write_record(record)
+        for record in vcf_reader:
+            for call in (record.samples):
+                vaf = call['VAF']
+                sample = call.sample
+                if vaf != None and vaf > float(cfg['SMuRF']['absent_threshold']) and vaf in responsibilities_dict[sample]:
+                    vaf = '{0:.2f}'.format(vaf)
+                    update_call_data(call, ['PC'], [responsibilities_dict[sample][str(vaf)]], vcf_reader)
+                else:
+                    update_call_data(call, ['PC'], [None], vcf_reader)
+            format_list = list(vcf_reader.formats.keys())
+            format_list.remove('GT')
+            format_list.insert(0,'GT')
+            # Add VAF information to the format field of each sample
+            record.FORMAT = ":".join(format_list)
+            vcf_writer.write_record(record)
     # os.system("rm -rf SMuRF_tmp/*")
     time.sleep(10)
     os.system("rm -rf SMuRF_tmp")
