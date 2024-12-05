@@ -33,7 +33,6 @@ parser = argparse.ArgumentParser()
 parser = argparse.ArgumentParser(description='Put here a description.')
 parser.add_argument('-i', '--input', type=str, help='Input indexed vcf.gz file', required=True)
 parser.add_argument('-b', '--bam', action='append', nargs="*", type=str, help='Input bam file', required=True)
-parser.add_argument('-r', '--run_contigs', type=str, help='File with contigs to run')
 parser.add_argument('-n', '--normal', action='append', type=str, help='Normal sample name')
 parser.add_argument('-t', '--threads', type=int, help='Number of threads',default=8, required=False)
 parser.add_argument('-c','--config', default=os.path.dirname(os.path.abspath(__file__))+"/config.ini",type=str,help='Give the full path to your own ini file (default: %(default)s)')
@@ -77,9 +76,6 @@ responsibilities_dict = collections.defaultdict(dict)
 contig_dict = {}
 bam_sample_names = collections.defaultdict(dict)
 
-with open(args.run_contigs) as f:
-    run_contigs = f.read().splitlines()
-
 def main():
     global vcf_reader, vaf_df, blacklist
     vcf_reader = fix_vcf_header(vcf_reader)
@@ -96,8 +92,7 @@ def main():
     q = mp.Queue()
     q_out = mp.Queue()
     for contig in contig_list:
-        if contig in run_contigs:
-            q.put(contig)
+        q.put(contig)
 
     # Create number of processes to parse the vcf file
     processes = [mp.Process(target=parse_chr_vcf, args=(q, q_out, vcf_reader, args.bam)) for x in range(int(args.threads))]
@@ -145,30 +140,36 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
                 continue
             # print( "blacklist", blacklist )
             for record in contig_vcf_reader.fetch(contig):
+                known = False
                 if type(record.FILTER) != list:
                     record.FILTER = []
                 if not record.FILTER:
                     chr = record.CHROM
                     chr = chr.lower()
                     chr = re.sub("chr|chrom", "", chr)
-
+             
 #                    if (len(record.ALT[0]) > 1):
 #                        check_flanking_indels(record, contig_vcf_reader)
                     if 'known_variant_flag_ids' in cfg['SMuRF'] and 'known_variant_flag_values' in cfg['SMuRF']:
                         flag_ids = cfg['SMuRF']['known_variant_flag_ids'].split(" ")
                         flag_values = cfg['SMuRF']['known_variant_flag_values'].split(" ")
-                        next = False
+                        if 'CSQ' in record.INFO:
+                            if check_VEP_CSQ(contig_vcf_reader, flag_ids, flag_values, record):
+ #                               record.FILTER.append("KnownVariant")
+                                known = True
+                                                    
                         for i in range(0, len(flag_ids)):
                             flag_id = flag_ids[i]
-                            flag_value = flag_values[i]
-                            if flag_id in record.INFO and record.INFO[flag_id] > flag_value:
-                                record.FILTER.append("KnownVariant")
-                                next = True
+                            flag_value = float(flag_values[i])
+                            if flag_id in record.INFO and record.INFO[flag_id][0] > flag_value:
+#                                record.FILTER.append("KnownVariant")
+                                known = True
                                 break
-                        if next:
-                            continue
-
-                    if "MQ" not in record.INFO:
+ #                       if next:
+#                            continue
+                    if known:
+                        record.FILTER.append("KnownVariant")
+                    elif "MQ" not in record.INFO:
                         record.FILTER.append("NoMQtag")
                     elif record.ID and "COSM" not in record.ID and cfg['SMuRF']['known_variant_flag_ids'] == '':
                         record.FILTER.append('KnownVariant')
@@ -192,6 +193,21 @@ def parse_chr_vcf(q, q_out, contig_vcf_reader, bams):
         # Break the loop if the queue is empty
         except queue.Empty:
             break
+
+def check_VEP_CSQ( tmp_reader, f_ids, f_values, record):
+    description = tmp_reader.infos['CSQ'][3].split("|")
+    f_idx = [None] * len(f_ids)
+    for i in range(0, len(f_ids)):
+        if f_ids[i] in description:
+            f_idx[i] = description.index( f_ids[i] )
+    
+    csq = record.INFO['CSQ'][0].split("|")
+    for i in range(0, len(f_values)):
+        if f_idx[i]:
+            if csq[f_idx[i]] and float(csq[f_idx[i]]) > float(f_values[i]):
+                return( True )
+
+    return( False )
 
 def check_flanking_indels( record, contig_vcf_reader):
     for record2 in contig_vcf_reader.fetch(record.CHROM, record.POS-int(cfg['SMuRF']['indel_flank']), record.POS+int(cfg['SMuRF']['indel_flank'])):
@@ -795,26 +811,28 @@ def merge_tmp_vcfs():
     os.system("grep -P '^#|\s+PASS\s+' "+vcf_name+".SMuRF.vcf > SMuRF_tmp/filter.vcf")
 
 def add_responsibilities():
-    vcf_reader = pyvcf.Reader(filename="SMuRF_tmp/filter.vcf", encoding='utf-8')
-    vcf_reader.formats['PC'] = pyvcf.parser._Format('PC',None,'Float','Probability of each component')
+    with open('SMuRF_tmp/filter.vcf', 'r', encoding='utf-8') as vcf_file:
+        vcf_reader = pyvcf.Reader(vcf_file)
+    #vcf_reader = pyvcf.Reader(filename="SMuRF_tmp/filter.vcf", encoding='utf-8')
+        vcf_reader.formats['PC'] = pyvcf.parser._Format('PC',None,'Float','Probability of each component')
 
-    vcf_writer =  pyvcf.Writer(open(vcf_name+'.SMuRF.filtered.vcf','w', encoding='utf-8'), vcf_reader)
+        vcf_writer =  pyvcf.Writer(open(vcf_name+'.SMuRF.filtered.vcf','w', encoding='utf-8'), vcf_reader)
 
-    for record in vcf_reader:
-        for call in (record.samples):
-            vaf = call['VAF']
-            sample = call.sample
-            if vaf != None and vaf > float(cfg['SMuRF']['absent_threshold']) and vaf in responsibilities_dict[sample]:
-                vaf = '{0:.2f}'.format(vaf)
-                update_call_data(call, ['PC'], [responsibilities_dict[sample][str(vaf)]], vcf_reader)
-            else:
-                update_call_data(call, ['PC'], [None], vcf_reader)
-        format_list = list(vcf_reader.formats.keys())
-        format_list.remove('GT')
-        format_list.insert(0,'GT')
-        # Add VAF information to the format field of each sample
-        record.FORMAT = ":".join(format_list)
-        vcf_writer.write_record(record)
+        for record in vcf_reader:
+            for call in (record.samples):
+                vaf = call['VAF']
+                sample = call.sample
+                if vaf != None and vaf > float(cfg['SMuRF']['absent_threshold']) and vaf in responsibilities_dict[sample]:
+                    vaf = '{0:.2f}'.format(vaf)
+                    update_call_data(call, ['PC'], [responsibilities_dict[sample][str(vaf)]], vcf_reader)
+                else:
+                    update_call_data(call, ['PC'], [None], vcf_reader)
+            format_list = list(vcf_reader.formats.keys())
+            format_list.remove('GT')
+            format_list.insert(0,'GT')
+            # Add VAF information to the format field of each sample
+            record.FORMAT = ":".join(format_list)
+            vcf_writer.write_record(record)
     # os.system("rm -rf SMuRF_tmp/*")
     time.sleep(10)
     os.system("rm -rf SMuRF_tmp")
